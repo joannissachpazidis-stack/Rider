@@ -9,7 +9,25 @@ const Cloud = (() => {
 
   const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
   const preset = window.CLOUD_CONFIG && window.CLOUD_CONFIG.url && window.CLOUD_CONFIG.key ? window.CLOUD_CONFIG : null;
-  let cfg = read(LS.cfg) || preset;
+  // Aus beliebigen Eingaben die reine Project URL machen, z. B.
+  //   https://xyz.supabase.co/rest/v1/   → https://xyz.supabase.co
+  //   https://supabase.com/dashboard/project/xyz/settings/api → https://xyz.supabase.co
+  //   xyz (nur die Projekt-ID)           → https://xyz.supabase.co
+  function normalizeUrl(input) {
+    let s = String(input || '').trim().replace(/^["'<\s]+|["'>\s]+$/g, '');
+    if (/^[a-z0-9]{15,30}$/i.test(s)) return `https://${s.toLowerCase()}.supabase.co`;
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    let u;
+    try { u = new URL(s); } catch { return s.replace(/\/+$/, ''); }
+    const ref = u.pathname.match(/\/project\/([a-z0-9]{15,30})/i);
+    if (/(^|\.)supabase\.com$/i.test(u.hostname) && ref) return `https://${ref[1].toLowerCase()}.supabase.co`;
+    return u.origin;
+  }
+  const cleanKey = (k) => String(k || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+  const fixCfg = (c) => (c && c.url ? { url: normalizeUrl(c.url), key: cleanKey(c.key) } : c);
+
+  let cfg = fixCfg(read(LS.cfg) || preset);
+  if (cfg) localStorage.getItem(LS.cfg) && localStorage.setItem(LS.cfg, JSON.stringify(cfg));
   let session = read(LS.session);
   let state = 'off';
   let lastError = '';
@@ -17,6 +35,7 @@ const Cloud = (() => {
   const remoteListeners = new Set();
 
   const setState = (s, err = '') => { state = s; lastError = err; listeners.forEach((f) => f(state, lastError)); };
+  function atobSafe(x) { try { return atob(String(x || '').replace(/-/g, '+').replace(/_/g, '/')); } catch { return ''; } }
   const configured = () => !!(cfg && cfg.url && cfg.key);
   const loggedIn = () => configured() && !!session?.access_token;
   const userId = () => session?.user?.id;
@@ -214,14 +233,31 @@ const Cloud = (() => {
     configured, loggedIn, sync, schedule, fetchFile,
     onState(fn) { listeners.add(fn); },
     onRemoteChange(fn) { remoteListeners.add(fn); },
-    configure(url, key) {
-      url = url.trim().replace(/\/+$/, '');
-      if (!/^https?:\/\//.test(url)) url = 'https://' + url;
-      cfg = { url, key: key.trim() };
+    // Prüft die Verbindung, bevor sie gespeichert wird. Gibt bei Problemen eine verständliche Meldung zurück.
+    async configure(url, key) {
+      const next = { url: normalizeUrl(url), key: cleanKey(key) };
+      if (!next.key) return 'Bitte den anon / publishable key eintragen.';
+      if (/service_role/.test(atobSafe(next.key.split('.')[1])) || /^sb_secret_/.test(next.key)) {
+        return 'Das ist der geheime service_role / secret Key. Bitte den „anon“ bzw. „publishable“ Key nehmen – der geheime darf nicht in die App.';
+      }
+      try {
+        const r = await fetch(next.url + '/auth/v1/settings', { headers: { apikey: next.key, Authorization: 'Bearer ' + next.key } });
+        if (r.status === 401 || r.status === 403) return 'Der Key passt nicht zu diesem Projekt. Bitte den „anon / publishable“ Key aus Project Settings → API kopieren.';
+        if (!r.ok) return `Unter ${next.url} antwortet kein Supabase-Projekt (Fehler ${r.status}). Bitte die Project URL prüfen – sie sieht aus wie https://xxxx.supabase.co`;
+        const t = await fetch(next.url + '/rest/v1/items?select=id&limit=1', { headers: { apikey: next.key, Authorization: 'Bearer ' + next.key } });
+        if (t.status === 404 || t.status === 400) {
+          const j = await t.json().catch(() => ({}));
+          if (/items|relation|schema cache/i.test(j.message || '')) return 'Verbindung klappt, aber die Tabelle fehlt noch: Bitte im Supabase „SQL Editor“ den Inhalt von supabase/schema.sql ausführen.';
+        }
+      } catch {
+        return `${next.url} ist nicht erreichbar. Bitte die Project URL prüfen (https://xxxx.supabase.co) und ob Internet da ist.`;
+      }
+      cfg = next;
       localStorage.setItem(LS.cfg, JSON.stringify(cfg));
       saveSession(null);
       localStorage.removeItem(LS.lastPull);
       setState('loggedout');
+      return '';
     },
     resetConfig() {
       localStorage.removeItem(LS.cfg);

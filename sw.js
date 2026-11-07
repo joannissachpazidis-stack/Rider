@@ -1,5 +1,5 @@
 // Offline-Cache für die App-Dateien (Daten liegen in IndexedDB, Cloud-Anfragen gehen immer ans Netz).
-const CACHE = 'rider-ablage-v2';
+const CACHE = 'rider-ablage-v3';
 const FILES = ['./', 'index.html', 'styles.css', 'config.js', 'db.js', 'cloud.js', 'smart.js', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs'];
 

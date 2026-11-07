@@ -739,6 +739,7 @@ function cloudCard() {
       <form class="form" data-cfg>
         <label>Project URL <input name="url" placeholder="https://xxxx.supabase.co" required autocomplete="off"></label>
         <label>anon / publishable key <input name="key" placeholder="eyJhbGciOi… oder sb_publishable_…" required autocomplete="off"></label>
+        <p class="error" hidden></p>
         <div class="actions left"><button class="primary">Verbinden</button></div>
       </form>
     </div>`;
@@ -773,7 +774,19 @@ function cloudCard() {
 
 function bindCloudCard() {
   const cfg = $('[data-cfg]');
-  if (cfg) cfg.onsubmit = (e) => { e.preventDefault(); Cloud.configure(cfg.url.value, cfg.key.value); render(); };
+  if (cfg) cfg.onsubmit = async (e) => {
+    e.preventDefault();
+    const err = $('.error', cfg), btn = $('button', cfg);
+    err.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'Prüfe Verbindung …';
+    const problem = await Cloud.configure(cfg.url.value, cfg.key.value);
+    btn.disabled = false;
+    btn.textContent = 'Verbinden';
+    if (problem) { err.textContent = problem; err.hidden = false; return; }
+    toast('Verbunden – jetzt Konto anlegen oder anmelden');
+    render();
+  };
   const login = $('[data-login]');
   if (login) {
     let mode = 'in';
@@ -794,7 +807,10 @@ function bindCloudCard() {
         toast('Angemeldet – Daten werden synchronisiert');
         render();
       } catch (ex) {
-        err.textContent = /invalid login/i.test(ex.message) ? 'E-Mail oder Passwort falsch.' : /not confirmed/i.test(ex.message) ? 'E-Mail ist noch nicht bestätigt.' : 'Fehler: ' + ex.message;
+        err.textContent = /invalid path/i.test(ex.message) ? 'Die Project URL stimmt nicht. Tippe unten auf „Verbindung ändern“ und trage nur https://xxxx.supabase.co ein.'
+          : /already registered/i.test(ex.message) ? 'Für diese E-Mail gibt es schon ein Konto – bitte „Anmelden“ nutzen.'
+          : /password/i.test(ex.message) && /least|short|weak/i.test(ex.message) ? 'Das Passwort ist zu kurz (mindestens 6 Zeichen).'
+          : /invalid login/i.test(ex.message) ? 'E-Mail oder Passwort falsch.' : /not confirmed/i.test(ex.message) ? 'E-Mail ist noch nicht bestätigt.' : 'Fehler: ' + ex.message;
         err.hidden = false;
       } finally { btns.forEach((b) => (b.disabled = false)); }
     };
