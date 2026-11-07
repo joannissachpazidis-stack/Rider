@@ -358,3 +358,21 @@ main .actions .grow { flex: 1; }
   .fact-value { font-size: .92rem; }
   .fact-head { font-size: .7rem; }
 }
+
+/* Druckblatt Patchliste: nur Kanalname, Stagebox-Kanal, Übergabe-Kanal der Band */
+@media print {
+  .print-sheet { display: block !important; color: #000; }
+  .ps-head { border-bottom: 3px solid #000; margin-bottom: 4mm; padding-bottom: 2mm; }
+  .ps-head h1 { font-size: 24pt; margin: 0; line-height: 1.1; }
+  .ps-head p { font-size: 11pt; margin: 1mm 0 0; color: #000; }
+  .ps-table { width: 100%; border-collapse: collapse; font-size: 15pt; }
+  .ps-table th { font-size: 10pt; text-transform: uppercase; letter-spacing: .06em; text-align: left; border-bottom: 2px solid #000; padding: 2mm 3mm; }
+  .ps-table td { border-bottom: 1px solid #000; padding: 2.2mm 3mm; }
+  .ps-table tbody tr:nth-child(even) td { background: #e6e6e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ps-table .ps-name { font-weight: 700; }
+  .ps-table .ps-num { width: 30mm; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ps-table td.ps-num { font-size: 18pt; }
+  .ps-table tr { break-inside: avoid; }
+  .ps-table thead { display: table-header-group; }
+  .ps-foot { font-size: 10pt; margin-top: 3mm; }
+}

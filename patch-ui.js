@@ -141,6 +141,24 @@ const PatchUI = (() => {
     };
   }
 
+  /* ---------- Druckblatt: nur das Wesentliche, für alle lesbar ---------- */
+  function printSheet(b, profile, inp, res) {
+    const rows = [...res.slots, ...res.overflow].filter((s) => s.input).sort((x, y) => x.ch - y.ch);
+    const dated = inp.source?.date ? ` · Rider vom ${fmtDate(inp.source.date)}` : '';
+    return `
+      <section class="print-sheet print-only">
+        <header class="ps-head">
+          <h1>${esc(b.name)}</h1>
+          <p>Patchliste · Stagebox: ${esc(profile.name)}${dated} · Stand ${fmtDate(today())}</p>
+        </header>
+        <table class="ps-table">
+          <thead><tr><th class="ps-name">Kanal</th><th class="ps-num">Stagebox</th><th class="ps-num">Übergabe Band</th></tr></thead>
+          <tbody>${rows.map((s) => `<tr><td class="ps-name">${esc(s.input.r.source)}</td><td class="ps-num">${s.ch}</td><td class="ps-num">${s.input.r.ch}</td></tr>`).join('')}</tbody>
+        </table>
+        <p class="ps-foot">${rows.length} Kanäle</p>
+      </section>`;
+  }
+
   /* ---------- Bereich „Patch“ ---------- */
   async function patchTab(b, docs, profileId) {
     const profiles = (await DB.all('profiles')).sort(byName);
@@ -170,7 +188,6 @@ const PatchUI = (() => {
         <td class="mine">${esc(s.label) || '<span class="muted">–</span>'}</td>
         <td class="how"><span class="how-${cls}" title="${esc(title)}">${icon}</span></td>
         <td class="band-ch no-print">${over ? `<b>${r.ch}</b>` : `<select data-ov="${s.ch}" aria-label="Band-Kanal für Stagebox ${s.ch}">${options(r?.ch)}</select>`}</td>
-        <td class="print-only">${r ? r.ch : ''}</td>
         <td><b>${r ? esc(r.source) : ''}</b></td>
         <td>${r ? esc(r.mic) : ''}</td>
         <td>${r ? esc(r.stand) : ''}</td>
@@ -184,15 +201,15 @@ const PatchUI = (() => {
           <select data-profile>${profiles.map((p) => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)} (${p.channels.length} Kanäle)</option>`).join('')}<option value="__new">+ Neues Profil …</option></select></label>
         <a class="small" href="#/stagebox/${pid}">Profil bearbeiten</a>
       </div>
-      <div class="print-only print-title"><h2>Patch: ${esc(b.name)}</h2><p>Stagebox-Profil: ${esc(profile.name)} · Stand Inputliste: ${inp.source?.date ? fmtDate(inp.source.date) : '–'} · erstellt ${fmtDate(today())}</p></div>
-      <p class="small patch-sum">${used} von ${inp.rows.filter((r) => !['spare', 'empty'].includes(Patch.classify(r.source).cls)).length} Band-Kanälen gepatcht ·
+      ${printSheet(b, profile, inp, res)}
+      <p class="small patch-sum no-print">${used} von ${inp.rows.filter((r) => !['spare', 'empty'].includes(Patch.classify(r.source).cls)).length} Band-Kanälen gepatcht ·
         <span class="how-ok">✓ ${count('exact') + count('class')} passend</span> ·
         <span class="how-similar">≈ ${count('similar') + count('family')} ähnlich</span> ·
         <span class="how-free">＋ ${count('free')} auf freie Kanäle</span>
         ${count('manual') ? ` · <span class="how-manual">✎ ${count('manual')} manuell</span>` : ''}
         ${res.overflow.length ? ` · <span class="warn-text">! ${res.overflow.length} passen nicht mehr in die Stagebox</span>` : ''}</p>
-      <div class="table-wrap"><table class="ptable patch">
-        <thead><tr><th>Stagebox</th><th>Dein Profil</th><th></th><th class="no-print">← Band-Kanal</th><th class="print-only">Band</th><th>Quelle</th><th>Mikro / DI</th><th>Stativ</th><th>48V</th><th>Notiz</th></tr></thead>
+      <div class="table-wrap no-print"><table class="ptable patch">
+        <thead><tr><th>Stagebox</th><th>Dein Profil</th><th></th><th>← Band-Kanal</th><th>Quelle</th><th>Mikro / DI</th><th>Stativ</th><th>48V</th><th>Notiz</th></tr></thead>
         <tbody>${res.slots.map((s) => line(s)).join('')}${res.overflow.map((s) => line(s, true)).join('')}</tbody>
       </table></div>
       <div class="actions left no-print">
@@ -201,7 +218,7 @@ const PatchUI = (() => {
         ${Object.keys(ov).length ? '<button class="ghost small-btn" data-ovreset>Manuelle Zuordnung zurücksetzen</button>' : ''}
         <button class="ghost small-btn" data-copy>📋 Kopieren</button>
         <button class="ghost small-btn" data-csv>⬇︎ CSV</button>
-        <button class="primary small-btn" data-print>🖨 Drucken / PDF</button>
+        <button class="primary small-btn" data-print>🖨 Patchliste drucken / PDF</button>
       </div>
       <p class="muted small no-print">Die Zuordnung erfolgt über die Instrument-Bezeichnungen. Über „← Band-Kanal“ kannst du jede Zeile selbst ändern – das wird für diese Band und dieses Profil gespeichert.</p>`;
   }
