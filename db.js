@@ -4,7 +4,7 @@
 // als "dirty" markiert und von cloud.js mit der Cloud abgeglichen.
 const DB = (() => {
   const NAME = 'rider-ablage';
-  const VERSION = 1;
+  const VERSION = 2;
   let dbp = null;
   const listeners = new Set();
 
@@ -16,11 +16,16 @@ const DB = (() => {
           const db = r.result;
           if (!db.objectStoreNames.contains('bands')) db.createObjectStore('bands', { keyPath: 'id' });
           if (!db.objectStoreNames.contains('concerts')) db.createObjectStore('concerts', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('profiles')) db.createObjectStore('profiles', { keyPath: 'id' });
           if (!db.objectStoreNames.contains('docs')) {
             db.createObjectStore('docs', { keyPath: 'id' }).createIndex('bandId', 'bandId');
           }
         };
-        r.onsuccess = () => resolve(r.result);
+        r.onsuccess = () => {
+          const db = r.result;
+          db.onversionchange = () => { db.close(); location.reload(); }; // neue App-Version in anderem Tab
+          resolve(db);
+        };
         r.onerror = () => reject(r.error);
       });
     }
@@ -47,7 +52,7 @@ const DB = (() => {
   function changed(name, obj) { listeners.forEach((f) => f(name, obj)); }
 
   return {
-    STORES: ['bands', 'concerts', 'docs'],
+    STORES: ['bands', 'concerts', 'docs', 'profiles'],
     raw,
     onChange(fn) { listeners.add(fn); },
     async all(name) { return (await raw.all(name)).filter(alive); },

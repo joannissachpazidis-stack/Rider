@@ -19,6 +19,14 @@ Erkannt wird die Band über den Dateinamen, den Text im Rider und die Ähnlichke
 
 Wird eine Datei auf die Karte einer Band im Konzert gezogen, ist Band und Konzert schon festgelegt.
 
+### Bandseite: Mix-Infos, Inputliste & Patch
+- **Überblick „Für den Mix“:** Die App liest alle aktuellen Rider der Band und fasst zusammen, was für den Mix wichtig ist: In-Ear ja/nein (eigenes Rack/Split?), Wedges & Monitorwege, eigenes Pult/Techniker:in/Mikros, Click & Playback, Funkstrecken, besondere Instrumente (Keys, Bläser, Streicher, Akustik), Anzahl Inputs/DIs/+48V, Drumriser, Strom, Effekte, Soundcheck-Zeiten und „wichtige Hinweise“ – jeweils mit dem Originalsatz aus dem Rider.
+- **Inputliste:** wird aus dem Rider gelesen (Kanal laut Band-Rack/Split, Quelle, Mikro/DI, Stativ, 48V, Notiz). Lässt sich bearbeiten oder per „Liste einfügen“ aus E-Mail/Excel übernehmen. Kommt ein neuer Rider, schlägt die App das Neu-Einlesen vor.
+- **Patch:** Stagebox-Profil wählen → die App legt jeden Band-Kanal auf den passenden Kanal deiner Stagebox (✓ passend, ≈ ähnlich, ＋ auf freien Kanal, Stereo-Paare bleiben nebeneinander). Jede Zeile lässt sich von Hand umlegen (wird pro Band und Profil gespeichert). Export: Kopieren (für Excel/Mail), CSV, Drucken/PDF.
+
+### Stagebox-Profile
+Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben willst – aus der Standard-Vorlage (32 Kanäle), leer, aus der Inputliste einer Band oder per eingefügter Liste. Pro Konzert lässt sich festlegen, welche Stagebox dort genutzt wird; der „🎛 Patch“-Knopf bei jeder Band nutzt dann dieses Profil.
+
 ### Konzerte & Bands
 - Konzerte mit Datum, Ort, Notizen und Line-up (Reihenfolge, Spielzeiten).
 - Wird eine bekannte Band zu einem Konzert hinzugefügt, fragt die App, ob die vorhandenen Rider noch aktuell sind, und ordnet sie direkt zu.
@@ -58,4 +66,4 @@ Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch ausw
 
 ## Technik
 - Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
-- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `app.js` – Oberfläche.
+- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `app.js` – Oberfläche.

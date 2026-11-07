@@ -3,7 +3,8 @@
 // Spricht direkt die REST-Schnittstellen an, damit keine Bibliothek nötig ist.
 const Cloud = (() => {
   const BUCKET = 'riders';
-  const KIND = { bands: 'band', concerts: 'concert', docs: 'doc' };
+  // Stagebox-Profile laufen unter der Art 'band' mit Markierung _store, damit die bestehende Tabelle ohne Änderung passt.
+  const KIND = { bands: 'band', concerts: 'concert', docs: 'doc', profiles: 'band' };
   const STORE = { band: 'bands', concert: 'concerts', doc: 'docs' };
   const LS = { cfg: 'cloud.cfg', session: 'cloud.session', lastPull: 'cloud.lastPull', lastSync: 'cloud.lastSync' };
 
@@ -97,7 +98,8 @@ const Cloud = (() => {
       }
     }
     const rows = dirty.map(([s, r]) => ({
-      id: r.id, user_id: userId(), kind: KIND[s], deleted: !!r.deleted, data: r.deleted ? null : strip(r),
+      id: r.id, user_id: userId(), kind: KIND[s], deleted: !!r.deleted,
+      data: r.deleted ? (s === 'profiles' ? { _store: s } : null) : (s === 'profiles' ? { ...strip(r), _store: s } : strip(r)),
     }));
     for (let i = 0; i < rows.length; i += 100) {
       await api('/rest/v1/items?on_conflict=user_id,id', {
@@ -125,8 +127,8 @@ const Cloud = (() => {
       const rows = await api(`/rest/v1/items?select=id,kind,data,deleted,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=500`);
       for (const row of rows) {
         since = row.updated_at;
-        const s = STORE[row.kind];
-        if (!s) continue;
+        const s = row.data?._store || STORE[row.kind];
+        if (!s || !DB.STORES.includes(s)) continue;
         const local = await DB.raw.get(s, row.id);
         if (local?.dirty && (local.updatedAt || '') > (row.data?.updatedAt || '')) continue; // lokal neuer
         if (row.deleted) {
@@ -135,6 +137,7 @@ const Cloud = (() => {
         }
         if (local && !local.dirty && local.updatedAt === row.data.updatedAt) continue; // schon bekannt
         const rec = { ...row.data, dirty: false };
+        delete rec._store;
         if (s === 'docs') {
           rec.blob = local?.blob && local.fileHash && local.fileHash === rec.fileHash ? local.blob : null;
           rec.fileUploaded = true;

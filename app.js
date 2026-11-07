@@ -485,7 +485,8 @@ async function viewConcert(id) {
   setTab('concerts');
   const c = await DB.get('concerts', id);
   if (!c) { app().innerHTML = '<p>Konzert nicht gefunden. <a href="#/concerts">Zurück</a></p>'; return; }
-  const [bands, docs] = await Promise.all([Data.bands(), Data.docs()]);
+  const [bands, docs, profiles] = await Promise.all([Data.bands(), Data.docs(), DB.all('profiles')]);
+  profiles.sort(byName);
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const docMap = new Map(docs.map((d) => [d.id, d]));
 
@@ -511,6 +512,7 @@ async function viewConcert(id) {
         ${newer.length ? `<button class="ghost small-btn" data-check="${e.bandId}">📂 Aus Ablage (${newer.length})</button>` : ''}
         <button class="ghost small-btn" data-upload="${e.bandId}">⬆︎ Rider ablegen</button>
         <button class="ghost small-btn" data-note="${e.bandId}">📝 Notiz</button>
+        <a class="button ghost small-btn" href="#/band/${e.bandId}/patch/${c.profileId || ''}">🎛 Patch</a>
       </div>
     </div>`;
   };
@@ -523,6 +525,8 @@ async function viewConcert(id) {
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
     </div>
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
+    ${profiles.length ? `<label class="lbl inline-lbl">🎛 Stagebox für dieses Konzert
+      <select data-cprofile><option value="">– wählen –</option>${profiles.map((p) => `<option value="${p.id}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
     <h3 class="section">Line-up</h3>
     <div class="list">${c.lineup.map(entryHtml).join('') || '<p class="muted">Noch keine Bands.</p>'}</div>
     <form class="add-band card" autocomplete="off">
@@ -532,6 +536,8 @@ async function viewConcert(id) {
     </form>`;
 
   const save = async () => { await DB.put('concerts', c); render(); };
+  const cp = $('[data-cprofile]');
+  if (cp) cp.onchange = () => { c.profileId = cp.value || null; save(); };
   $('[data-editc]').onclick = () => concertDialog(c);
   $('[data-delc]').onclick = async () => {
     if (await confirmDialog(`Konzert „${esc(c.title)}“ löschen? Die Rider bleiben bei den Bands gespeichert.`, 'Löschen', true)) {
@@ -603,7 +609,7 @@ async function viewBands() {
   $('[data-newband]').onclick = async () => { const b = await bandDialog(); if (b) location.hash = '#/band/' + b.id; };
 }
 
-async function viewBand(id) {
+async function viewBand(id, tab = '', arg = '') {
   setTab('bands');
   const b = await DB.get('bands', id);
   if (!b) { app().innerHTML = '<p>Band nicht gefunden. <a href="#/bands">Zurück</a></p>'; return; }
@@ -613,28 +619,48 @@ async function viewBand(id) {
   const groups = DOC_TYPES.map((t) => [t, active.filter((d) => d.type === t).sort((a, x) => (x.date || '').localeCompare(a.date || ''))]).filter(([, l]) => l.length);
   const bc = concerts.filter((c) => c.lineup.some((e) => e.bandId === id)).sort((a, x) => (x.date || '').localeCompare(a.date || ''));
 
-  app().innerHTML = `
-    <a class="back" href="#/bands">‹ Bands</a>
-    <div class="page-head">
+  const t = ['patch', 'docs'].includes(tab) ? tab : 'info';
+  const tabs = `<nav class="subtabs no-print">
+      <a href="#/band/${id}" class="${t === 'info' ? 'active' : ''}">Überblick</a>
+      <a href="#/band/${id}/patch" class="${t === 'patch' ? 'active' : ''}">🎛 Patch</a>
+      <a href="#/band/${id}/docs" class="${t === 'docs' ? 'active' : ''}">Unterlagen (${active.length})</a></nav>`;
+  const head = `
+    <a class="back no-print" href="#/bands">‹ Bands</a>
+    <div class="page-head no-print">
       <div><h1>${esc(b.name)}</h1>${b.genre ? `<div class="muted">${esc(b.genre)}</div>` : ''}</div>
       <div class="head-actions"><button class="ghost" data-editb>Bearbeiten</button><button class="ghost danger-text" data-delb>Löschen</button></div>
-    </div>
-    ${b.contact ? `<div class="notes"><b>Kontakt:</b> ${esc(b.contact)}</div>` : ''}
-    ${b.notes ? `<div class="notes">${esc(b.notes)}</div>` : ''}
+    </div>`;
+  const bindHead = () => {
+    $('[data-editb]').onclick = async () => { if (await bandDialog(b)) render(); };
+    $('[data-delb]').onclick = async () => {
+      if (await confirmDialog(`Band „${esc(b.name)}“ mit allen ${docs.length} Unterlagen löschen? Sie wird auch aus allen Konzerten entfernt.`, 'Löschen', true)) {
+        await Data.deleteBand(id);
+        location.hash = '#/bands';
+      }
+    };
+  };
+  if (t === 'info') {
+    app().innerHTML = head + `
+      ${b.contact ? `<div class="notes"><b>Kontakt:</b> ${esc(b.contact)}</div>` : ''}
+      ${b.notes ? `<div class="notes">${esc(b.notes)}</div>` : ''}` + tabs + PatchUI.overview(b, docs) + `
+      <h3 class="section">Konzerte</h3>
+      <div class="list">${bc.map((c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[fmtDate(c.date), c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span><span class="badge">${c.lineup.find((e) => e.bandId === id).docIds.length} Unterlagen</span></a>`).join('') || '<p class="muted">Noch in keinem Konzert.</p>'}</div>`;
+    bindHead();
+    PatchUI.bindOverview(b, docs);
+    return;
+  }
+  if (t === 'patch') {
+    app().innerHTML = head + tabs + (await PatchUI.patchTab(b, docs, arg));
+    bindHead();
+    PatchUI.bindPatch(b, docs);
+    return;
+  }
+  app().innerHTML = head + tabs + `
     <div class="page-head"><h3 class="section">Aktuelle Unterlagen</h3><div class="head-actions"><button class="ghost" data-note>📝 Notiz</button><button class="primary" data-upload>⬆︎ Rider ablegen</button></div></div>
     ${groups.length ? groups.map(([t, l]) => `<ul class="docs">${l.map((d) => docRow(d)).join('')}</ul>`).join('')
       : '<p class="muted">Noch keine Unterlagen. Lade Techrider, Inputliste, Stageplot o. ä. hoch.</p>'}
-    ${archived.length ? `<details class="section"><summary><h3>Veraltete Versionen (${archived.length})</h3></summary><ul class="docs">${archived.map((d) => docRow(d)).join('')}</ul></details>` : ''}
-    <h3 class="section">Konzerte</h3>
-    <div class="list">${bc.map((c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[fmtDate(c.date), c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span><span class="badge">${c.lineup.find((e) => e.bandId === id).docIds.length} Unterlagen</span></a>`).join('') || '<p class="muted">Noch in keinem Konzert.</p>'}</div>`;
-
-  $('[data-editb]').onclick = async () => { if (await bandDialog(b)) render(); };
-  $('[data-delb]').onclick = async () => {
-    if (await confirmDialog(`Band „${esc(b.name)}“ mit allen ${docs.length} Unterlagen löschen? Sie wird auch aus allen Konzerten entfernt.`, 'Löschen', true)) {
-      await Data.deleteBand(id);
-      location.hash = '#/bands';
-    }
-  };
+    ${archived.length ? `<details class="section"><summary><h3>Veraltete Versionen (${archived.length})</h3></summary><ul class="docs">${archived.map((d) => docRow(d)).join('')}</ul></details>` : ''}`;
+  bindHead();
   $('[data-upload]').onclick = async () => { const f = await Smart.pickFiles(); if (f.length) await Smart.run(f, { bandId: id }); };
   $('[data-note]').onclick = () => Smart.noteDialog({ bandId: id });
   bindDocActions(app());
@@ -681,10 +707,10 @@ async function viewSearch() {
 const blobToDataURL = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
 
 async function exportAll() {
-  const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
+  const [bands, docs, concerts, profiles] = await Promise.all([Data.bands(), Data.docs(), Data.concerts(), DB.all('profiles')]);
   const docsOut = [];
   for (const d of docs) docsOut.push({ ...d, blob: undefined, data: d.blob ? await blobToDataURL(d.blob) : null });
-  const json = JSON.stringify({ app: 'rider-ablage', version: 1, exportedAt: nowIso(), bands, concerts, docs: docsOut });
+  const json = JSON.stringify({ app: 'rider-ablage', version: 2, exportedAt: nowIso(), bands, concerts, profiles, docs: docsOut });
   const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: `rider-ablage-backup-${today()}.json` });
   document.body.appendChild(a);
@@ -702,6 +728,7 @@ async function importAll(file) {
   if (!(await confirmDialog(`Backup vom ${fmtDate(data.exportedAt)} einspielen? (${data.bands.length} Bands, ${data.concerts.length} Konzerte, ${data.docs.length} Unterlagen)<br><span class="muted small">Vorhandene Einträge mit gleicher ID werden überschrieben, alles andere bleibt erhalten.</span>`, 'Einspielen'))) return;
   for (const b of data.bands) await DB.put('bands', b);
   for (const c of data.concerts) await DB.put('concerts', c);
+  for (const p of data.profiles || []) await DB.put('profiles', p);
   for (const d of data.docs) {
     const { data: dataUrl, ...rest } = d;
     rest.blob = dataUrl ? await (await fetch(dataUrl)).blob() : null;
@@ -871,11 +898,12 @@ async function viewMore() {
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
-  const [, view, id] = (location.hash || '#/concerts').split('/');
+  const [, view, id, sub, arg] = (location.hash || '#/concerts').split('/');
   const scroll = window.scrollY;
   const sameView = render.last === location.hash;
   render.last = location.hash;
-  const views = { concerts: viewConcerts, concert: () => viewConcert(id), bands: viewBands, band: () => viewBand(id), search: viewSearch, more: viewMore };
+  const views = { concerts: viewConcerts, concert: () => viewConcert(id), bands: viewBands, band: () => viewBand(id, sub, arg), search: viewSearch, more: viewMore,
+    stagebox: () => (id ? PatchUI.viewProfile(id) : PatchUI.viewStagebox()) };
   await (views[view] || viewConcerts)();
   if (seq === renderSeq) window.scrollTo(0, sameView ? scroll : 0);
 }

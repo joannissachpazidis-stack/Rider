@@ -33,20 +33,54 @@ const Smart = (() => {
     const lines = [];
     let title = '';
     try { title = (await pdf.getMetadata())?.info?.Title || ''; } catch { /* egal */ }
+    // Zeilen als Zellen mit x-Position sammeln; große Lücken = neue Tabellenzelle
+    const HEAD_RE = /(instr|source|quelle|signal)/i, HEAD_RE2 = /(mic|mikro|\bdi\b|ch\b|kanal)/i;
     for (let p = 1; p <= Math.min(pdf.numPages, 40); p++) {
       const content = await (await pdf.getPage(p)).getTextContent();
-      let line = '', lastY = null, lastEnd = null;
+      let cells = [], cell = null, lastY = null, lastEnd = null, headX = null;
+      const endCell = () => { if (cell && cell.s.trim()) cells.push({ x: cell.x, e: Math.max(cell.e, cell.x + 1), s: cell.s.replace(/\s+/g, ' ').trim() }); cell = null; };
+      const endLine = () => {
+        endCell();
+        if (!cells.length) { lines.push(''); return; }
+        const plain = cells.map((c) => c.s).join(' ');
+        if (cells.length >= 3 && HEAD_RE.test(plain) && HEAD_RE2.test(plain)) headX = cells.map((c) => ({ x: c.x, e: c.e }));
+        if (headX && cells.length >= 2 && cells.length < headX.length && /^\d/.test(cells[0].s)) {
+          // Zellen den Spalten der Kopfzeile zuordnen (größte Überlappung), damit leere Zellen ihren Platz behalten
+          const out = Array(headX.length).fill('');
+          let prev = -1;
+          for (const c of cells) {
+            let best = 0, bestGap = Infinity;
+            headX.forEach((h, k) => {
+              const gap = Math.max(h.x, c.x) - Math.min(h.e, c.e); // < 0 = Überlappung
+              if (gap < bestGap) { bestGap = gap; best = k; }
+            });
+            if (best <= prev) best = Math.min(prev + 1, headX.length - 1);
+            prev = best;
+            out[best] = out[best] ? out[best] + ' ' + c.s : c.s;
+          }
+          lines.push(out.join('\t').replace(/\t+$/, ''));
+        } else lines.push(cells.map((c) => c.s).join('\t'));
+        cells = [];
+      };
       for (const it of content.items) {
         if (!('str' in it)) continue;
         const x = it.transform[4], y = it.transform[5];
-        if (lastY !== null && Math.abs(y - lastY) > 2) { lines.push(line); line = ''; lastEnd = null; }
-        if (lastEnd !== null && x - lastEnd > 1 && !line.endsWith(' ') && !it.str.startsWith(' ')) line += ' ';
-        line += it.str;
+        if (lastY !== null && Math.abs(y - lastY) > 2) { endLine(); lastEnd = null; }
+        const blank = !it.str.trim();
+        if (blank) {
+          if ((it.width || 0) > 8) endCell(); else if (cell) cell.s += ' ';
+        } else {
+          if (cell && lastEnd !== null && x - lastEnd > 8) endCell();
+          if (!cell) cell = { x, e: x, s: '' };
+          else if (lastEnd !== null && x - lastEnd > 1 && !cell.s.endsWith(' ')) cell.s += ' ';
+          cell.s += it.str;
+          cell.e = x + (it.width || 0);
+        }
         lastY = y;
         lastEnd = x + (it.width || 0);
-        if (it.hasEOL) { lines.push(line); line = ''; lastY = null; lastEnd = null; }
+        if (it.hasEOL) { endLine(); lastY = null; lastEnd = null; }
       }
-      if (line) lines.push(line);
+      endLine();
     }
     await pdf.destroy();
     return { text: lines.join('\n'), title };
@@ -86,7 +120,8 @@ const Smart = (() => {
   async function officeText(blob, name) {
     if (/\.docx$/i.test(name)) {
       const f = await unzip(blob, (n) => n === 'word/document.xml');
-      const xml = f['word/document.xml'] || '';
+      const xml = (f['word/document.xml'] || '').replace(/<w:tr[\s>][\s\S]*?<\/w:tr>/g, (row) =>
+        row.split(/<\/w:tc>/).map((c) => xmlText(c.replace(/<\/w:p>/g, ' ')).replace(/\s+/g, ' ').trim()).filter((c, i, a) => c || i < a.length - 1).join('\t') + '</w:p>');
       return xml.split(/<\/w:p>/).map((par) => xmlText(par.replace(/<w:tab\/>/g, '\t').replace(/<w:br\/>/g, '\n'))).join('\n');
     }
     if (/\.odt$/i.test(name)) {
@@ -101,14 +136,23 @@ const Smart = (() => {
         if (!n.includes('worksheets')) continue;
         for (const row of xml.split(/<\/row>/)) {
           const cells = [];
+          let first = null;
           for (const m of row.matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
             const attrs = m[1] || '', inner = m[2] || '';
             const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
-            if (/t="s"/.test(attrs) && v !== undefined) cells.push(shared[+v] ?? '');
-            else if (/t="inlineStr"/.test(attrs)) cells.push(xmlText(inner));
-            else if (v !== undefined) cells.push(xmlText(v));
+            let val = null;
+            if (/t="s"/.test(attrs) && v !== undefined) val = shared[+v] ?? '';
+            else if (/t="inlineStr"/.test(attrs)) val = xmlText(inner);
+            else if (v !== undefined) val = xmlText(v);
+            if (val === null) continue;
+            // Spalte aus dem Zellbezug (z. B. r="C3"), damit leere Zellen ihren Platz behalten
+            const col = (attrs.match(/r="([A-Z]+)\d+"/) || [])[1];
+            const ci = col ? [...col].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : cells.length;
+            if (first === null) first = ci;
+            cells[ci - first] = val;
           }
-          if (cells.some((c) => c.trim())) rows.push(cells.join(' | '));
+          const arr = Array.from(cells, (c) => c ?? '');
+          if (arr.some((c) => c.trim())) rows.push(arr.join(' | '));
         }
       }
       return rows.join('\n');
