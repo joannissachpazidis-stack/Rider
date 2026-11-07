@@ -30,6 +30,7 @@ const fmtSize = (n) => (!n ? '' : n < 1024 ? '< 1 KB' : n < 1024 * 1024 ? Math.r
 const byName = (a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' });
 
 function toast(msg) {
+  document.querySelectorAll('.toast').forEach((x) => x.remove());
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
@@ -87,6 +88,7 @@ function docMeta(d) {
   if (d.confirmedAt) p.push('bestätigt ' + fmtDate(d.confirmedAt));
   if (d.fileName) p.push(esc(d.fileName) + (d.size ? ' (' + fmtSize(d.size) + ')' : ''));
   else p.push('nur Notiz');
+  if (d.fileName && !d.blob) p.push('☁︎');
   return p.join(' · ');
 }
 function docBadges(d) {
@@ -136,6 +138,11 @@ async function previewDoc(id) {
   const band = await DB.get('bands', d.bandId);
   let url = null;
   let body = '';
+  if (!d.blob && d.fileName && Cloud.loggedIn()) {
+    const pr = Smart.progress('Lade Datei aus der Cloud …');
+    try { d.blob = await Cloud.fetchFile(d); } catch { /* unten Hinweis */ } finally { pr.close(); }
+  }
+  if (!d.blob && d.fileName) body = '<p class="warn-text">Die Datei ist auf diesem Gerät noch nicht verfügbar. Melde dich in der Cloud an bzw. warte, bis die Synchronisierung fertig ist.</p>';
   if (d.blob) {
     url = URL.createObjectURL(d.blob);
     if (d.mime?.startsWith('image/')) body = `<img class="preview" src="${url}" alt="">`;
@@ -157,112 +164,6 @@ async function previewDoc(id) {
       <button class="ghost" data-close>Schließen</button>
     </div>`, (el) => el.classList.add('wide'));
   if (url) setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
-}
-
-/* ---------------- Upload ---------------- */
-/**
- * Neue Unterlagen ablegen.
- * opts: { bandId?, concertId?, type?, hint? }
- * Wenn concertId gesetzt ist, werden die Dateien direkt dem Konzert zugeordnet.
- */
-async function uploadDialog(opts = {}) {
-  const bands = (await Data.bands()).sort(byName);
-  const fixedBand = opts.bandId ? bands.find((b) => b.id === opts.bandId) : null;
-  let files = [];
-
-  const res = await modal(`
-    <div class="modal-head"><h2>Unterlagen ablegen</h2><button class="icon" data-close aria-label="Schließen">✕</button></div>
-    ${opts.hint ? `<p class="hint">${opts.hint}</p>` : ''}
-    <form class="form" novalidate>
-      ${fixedBand ? `<p><b>Band:</b> ${esc(fixedBand.name)}</p>` : `
-      <label>Band
-        <input name="band" list="dl-bands" required autocomplete="off" placeholder="Bandname" autofocus>
-        <datalist id="dl-bands">${bands.map((b) => `<option value="${esc(b.name)}">`).join('')}</datalist>
-      </label>`}
-      <label>Art
-        <select name="type">${DOC_TYPES.map((t) => `<option ${t === (opts.type || 'Techrider') ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      </label>
-      <div class="drop" tabindex="0">
-        <input type="file" name="file" multiple hidden>
-        <div class="drop-text">📄 Dateien hierher ziehen oder <u>auswählen</u><br><span class="muted small">PDF, Bilder, Text, Excel … (mehrere möglich)</span></div>
-        <ul class="file-list"></ul>
-      </div>
-      <label>Titel <input name="title" placeholder="wird aus dem Dateinamen übernommen"></label>
-      <label>Stand / Datum des Riders <input type="date" name="date" value="${today()}"></label>
-      <label>Notizen <textarea name="notes" rows="3" placeholder="z. B. bringen eigenes Pult mit, IEM über eigenes Rack …"></textarea></label>
-      <label class="check"><input type="checkbox" name="archiveOld" checked> Ältere Unterlagen derselben Art als <i>veraltet</i> markieren</label>
-      <p class="error" hidden></p>
-      <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary" type="submit">Speichern</button></div>
-    </form>`, (el, done) => {
-    const form = $('form', el);
-    const input = $('input[type=file]', el);
-    const drop = $('.drop', el);
-    const list = $('.file-list', el);
-    const showFiles = () => {
-      list.innerHTML = files.map((f, i) => `<li>${esc(f.name)} <span class="muted small">${fmtSize(f.size)}</span> <button type="button" class="link" data-rm="${i}">entfernen</button></li>`).join('');
-      $$('[data-rm]', list).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); files.splice(+b.dataset.rm, 1); showFiles(); }));
-      if (files.length === 1 && !form.title.value) form.title.placeholder = files[0].name.replace(/\.[^.]+$/, '');
-    };
-    const addFiles = (fl) => { files.push(...fl); showFiles(); guessType(); };
-    const guessType = () => {
-      const n = norm(files.map((f) => f.name).join(' '));
-      const guess = [['input', 'Inputliste'], ['channel', 'Inputliste'], ['stageplot', 'Stageplot'], ['buhnen', 'Stageplot'], ['plot', 'Stageplot'],
-        ['monitor', 'Monitoring'], ['licht', 'Lichtrider'], ['light', 'Lichtrider'], ['hospi', 'Hospitality'], ['catering', 'Hospitality'],
-        ['tech', 'Techrider'], ['rider', 'Techrider']].find(([k]) => n.includes(k));
-      if (guess && !opts.type) form.type.value = guess[1];
-    };
-    drop.onclick = (e) => { if (!e.target.closest('button')) input.click(); };
-    drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
-    input.onchange = () => { addFiles([...input.files]); input.value = ''; };
-    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
-    drop.ondragleave = () => drop.classList.remove('over');
-    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles([...e.dataTransfer.files]); };
-    if (opts.files) addFiles(opts.files);
-
-    form.onsubmit = (e) => {
-      e.preventDefault();
-      const err = $('.error', el);
-      const bandName = fixedBand ? fixedBand.name : form.band.value.trim();
-      if (!bandName) { err.textContent = 'Bitte eine Band angeben.'; err.hidden = false; return; }
-      if (!files.length && !form.notes.value.trim()) { err.textContent = 'Bitte eine Datei auswählen oder eine Notiz schreiben.'; err.hidden = false; return; }
-      done({
-        bandName, type: form.type.value, title: form.title.value.trim(), date: form.date.value,
-        notes: form.notes.value.trim(), archiveOld: form.archiveOld.checked,
-      });
-    };
-  });
-  if (!res) return [];
-
-  const band = fixedBand || (await Data.findOrCreateBand(res.bandName)).band;
-  const created = [];
-  const items = files.length ? files : [null];
-  for (const f of items) {
-    const doc = {
-      id: uid(), bandId: band.id, type: res.type,
-      title: (items.length === 1 && res.title) || (f ? f.name.replace(/\.[^.]+$/, '') : res.title || res.type),
-      date: res.date, notes: res.notes, archived: false, confirmedAt: nowIso(), createdAt: nowIso(),
-      fileName: f?.name || '', mime: f?.type || '', size: f?.size || 0, blob: f || null,
-    };
-    await DB.put('docs', doc);
-    created.push(doc);
-  }
-  const newIds = created.map((d) => d.id);
-  let replaced = [];
-  if (res.archiveOld) {
-    replaced = (await Data.docsOfBand(band.id)).filter((d) => d.type === res.type && !d.archived && !newIds.includes(d.id));
-    for (const d of replaced) { d.archived = true; await DB.put('docs', d); }
-  }
-  if (opts.concertId) {
-    const c = await DB.get('concerts', opts.concertId);
-    const entry = c?.lineup.find((e) => e.bandId === band.id);
-    if (entry) {
-      const replacedIds = replaced.map((d) => d.id);
-      entry.docIds = entry.docIds.filter((id) => !replacedIds.includes(id)).concat(newIds);
-      await DB.put('concerts', c);
-    }
-  }
-  toast(created.length === 1 ? 'Gespeichert' : `${created.length} Dateien gespeichert`);
-  return created;
 }
 
 async function editDocDialog(id) {
@@ -309,9 +210,9 @@ async function riderCheck(bandId, concertId, { manual = false } = {}) {
     const r = await modal(`
       <h2>${esc(band.name)}</h2>
       <p>${entry.docIds.length ? 'Alle aktuellen Unterlagen sind bereits zugeordnet.' : 'Für diese Band ist noch nichts abgelegt.'}</p>
-      <div class="actions"><button class="ghost" data-close>Schließen</button><button class="primary" data-up>Neue Unterlagen hochladen</button></div>`,
+      <div class="actions"><button class="ghost" data-close>Schließen</button><button class="primary" data-up>Neue Unterlagen ablegen</button></div>`,
     (el, done) => ($('[data-up]', el).onclick = () => done(true)));
-    if (r) await uploadDialog({ bandId, concertId });
+    if (r) await Smart.ask('', { bandId, concertId });
     return;
   }
 
@@ -367,10 +268,7 @@ async function riderCheck(bandId, concertId, { manual = false } = {}) {
   await DB.put('concerts', concert);
   if (added) toast(`${added} Unterlage${added > 1 ? 'n' : ''} hinzugefügt`);
   if (oldTypes.size) {
-    await uploadDialog({
-      bandId, concertId, type: [...oldTypes][0],
-      hint: `Veraltet markiert: <b>${[...oldTypes].map(esc).join(', ')}</b>. Lade hier gleich die neue Version hoch (oder später über das Konzert).`,
-    });
+    await Smart.ask(`Veraltet markiert: <b>${[...oldTypes].map(esc).join(', ')}</b>. Zieh hier gleich die neue Version rein (oder später über das Konzert).`, { bandId, concertId });
   }
 }
 
@@ -611,7 +509,8 @@ async function viewConcert(id) {
       ${hasOutdated ? '<p class="warn-text small">Mindestens eine Unterlage ist als veraltet markiert – neue Version hochladen?</p>' : ''}
       <div class="lineup-actions">
         ${newer.length ? `<button class="ghost small-btn" data-check="${e.bandId}">📂 Aus Ablage (${newer.length})</button>` : ''}
-        <button class="ghost small-btn" data-upload="${e.bandId}">⬆︎ Hochladen</button>
+        <button class="ghost small-btn" data-upload="${e.bandId}">⬆︎ Rider ablegen</button>
+        <button class="ghost small-btn" data-note="${e.bandId}">📝 Notiz</button>
       </div>
     </div>`;
   };
@@ -657,7 +556,8 @@ async function viewConcert(id) {
     save();
   }));
   $$('[data-check]').forEach((b) => (b.onclick = async () => { await riderCheck(b.dataset.check, c.id, { manual: true }); render(); }));
-  $$('[data-upload]').forEach((b) => (b.onclick = async () => { await uploadDialog({ bandId: b.dataset.upload, concertId: c.id }); render(); }));
+  $$('[data-upload]').forEach((b) => (b.onclick = async () => { const f = await Smart.pickFiles(); if (f.length) await Smart.run(f, { bandId: b.dataset.upload, concertId: c.id }); }));
+  $$('[data-note]').forEach((b) => (b.onclick = () => Smart.noteDialog({ bandId: b.dataset.note, concertId: c.id })));
   bindDocActions(app());
   $('.add-band').onsubmit = (e) => { e.preventDefault(); addBandToConcert(c.id, e.target.band.value); };
 }
@@ -721,7 +621,7 @@ async function viewBand(id) {
     </div>
     ${b.contact ? `<div class="notes"><b>Kontakt:</b> ${esc(b.contact)}</div>` : ''}
     ${b.notes ? `<div class="notes">${esc(b.notes)}</div>` : ''}
-    <div class="page-head"><h3 class="section">Aktuelle Unterlagen</h3><button class="primary" data-upload>⬆︎ Hochladen</button></div>
+    <div class="page-head"><h3 class="section">Aktuelle Unterlagen</h3><div class="head-actions"><button class="ghost" data-note>📝 Notiz</button><button class="primary" data-upload>⬆︎ Rider ablegen</button></div></div>
     ${groups.length ? groups.map(([t, l]) => `<ul class="docs">${l.map((d) => docRow(d)).join('')}</ul>`).join('')
       : '<p class="muted">Noch keine Unterlagen. Lade Techrider, Inputliste, Stageplot o. ä. hoch.</p>'}
     ${archived.length ? `<details class="section"><summary><h3>Veraltete Versionen (${archived.length})</h3></summary><ul class="docs">${archived.map((d) => docRow(d)).join('')}</ul></details>` : ''}
@@ -735,7 +635,8 @@ async function viewBand(id) {
       location.hash = '#/bands';
     }
   };
-  $('[data-upload]').onclick = async () => { await uploadDialog({ bandId: id }); render(); };
+  $('[data-upload]').onclick = async () => { const f = await Smart.pickFiles(); if (f.length) await Smart.run(f, { bandId: id }); };
+  $('[data-note]').onclick = () => Smart.noteDialog({ bandId: id });
   bindDocActions(app());
 }
 
@@ -747,12 +648,12 @@ async function viewSearch() {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   app().innerHTML = `
     <div class="page-head"><h1>Suche</h1></div>
-    <input class="search" type="search" placeholder="Bands, Konzerte, Orte, Dateien, Notizen …" value="${esc(searchQuery)}" autofocus>
+    <input class="search" type="search" placeholder="Bands, Konzerte, Orte, Rider-Inhalte …" value="${esc(searchQuery)}" autofocus>
     <div class="results"></div>`;
   const out = $('.results');
   const draw = () => {
     const terms = searchQuery.split(/\s+/).map(norm).filter(Boolean);
-    if (!terms.length) { out.innerHTML = '<p class="muted">Tipp: Mehrere Begriffe kombinieren, z. B. „inputliste muster“.</p>'; return; }
+    if (!terms.length) { out.innerHTML = '<p class="muted">Durchsucht auch den Text in den Ridern – z. B. „sm58“, „iem“ oder „flügel“.</p>'; return; }
     // Treffer, wenn jeder Begriff ein Wortanfang ist (ab 4 Zeichen auch mitten im Wort)
     const hit = (text) => {
       const words = String(text ?? '').split(/[\s\-_.,/()]+/).map(norm).filter(Boolean);
@@ -762,7 +663,7 @@ async function viewSearch() {
     const rb = bands.filter((b) => hit([b.name, b.genre, b.contact, b.notes].join(' '))).sort(byName);
     const rc = concerts.filter((c) => hit([c.title, c.venue, c.notes, c.date, fmtDate(c.date), ...c.lineup.map((e) => bandMap.get(e.bandId)?.name)].join(' ')))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const rd = docs.filter((d) => hit([d.title, d.type, d.notes, d.fileName, bandMap.get(d.bandId)?.name].join(' ')))
+    const rd = docs.filter((d) => hit([d.title, d.type, d.notes, d.fileName, bandMap.get(d.bandId)?.name, d.text].join(' ')))
       .sort((a, b) => a.archived - b.archived || (b.date || '').localeCompare(a.date || ''));
     out.innerHTML = `
       ${rb.length ? `<h3 class="section">Bands (${rb.length})</h3><div class="list">${rb.map((b) => `<a class="card row-card" href="#/band/${b.id}"><div class="avatar">${esc(b.name[0]?.toUpperCase())}</div><span class="grow"><b>${esc(b.name)}</b>${b.genre ? `<br><span class="muted small">${esc(b.genre)}</span>` : ''}</span></a>`).join('')}</div>` : ''}
@@ -804,10 +705,115 @@ async function importAll(file) {
   for (const d of data.docs) {
     const { data: dataUrl, ...rest } = d;
     rest.blob = dataUrl ? await (await fetch(dataUrl)).blob() : null;
+    rest.fileUploaded = false;
     await DB.put('docs', rest);
   }
   toast('Backup eingespielt');
   render();
+}
+
+function cloudStateText() {
+  const last = Cloud.lastSync;
+  const t = {
+    ok: `✓ Synchronisiert${last ? ' · zuletzt ' + new Date(last).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''}`,
+    syncing: '⟳ Synchronisiere …',
+    offline: '⨯ Offline – Änderungen werden übertragen, sobald wieder Netz da ist.',
+    error: `<span class="warn-text">! Fehler: ${esc(Cloud.error)}</span>`,
+    loggedout: Cloud.error ? `<span class="warn-text">${esc(Cloud.error)}</span>` : 'Nicht angemeldet',
+    off: 'Nicht eingerichtet',
+  };
+  return t[Cloud.state] || '';
+}
+
+function cloudCard() {
+  if (!Cloud.configured()) {
+    return `
+    <div class="card">
+      <h3>☁︎ Cloud-Speicher einrichten</h3>
+      <p class="small">Damit Rider und Konzerte auf allen Geräten (Handy, Laptop, Tablet) gleich sind, nutzt die Ablage <b>Supabase</b> – kostenlos für diese Datenmengen. Einmalig einrichten (ca. 5 Minuten):</p>
+      <ol class="small steps">
+        <li>Auf <b>supabase.com</b> kostenlos registrieren und ein neues Projekt anlegen.</li>
+        <li>Im Projekt <b>SQL Editor</b> öffnen, den Inhalt von <code>supabase/schema.sql</code> aus diesem Repository einfügen und <b>Run</b> drücken.</li>
+        <li>Unter <b>Project Settings → API</b> die <b>Project URL</b> und den <b>anon / publishable key</b> kopieren und hier eintragen.</li>
+      </ol>
+      <form class="form" data-cfg>
+        <label>Project URL <input name="url" placeholder="https://xxxx.supabase.co" required autocomplete="off"></label>
+        <label>anon / publishable key <input name="key" placeholder="eyJhbGciOi… oder sb_publishable_…" required autocomplete="off"></label>
+        <div class="actions left"><button class="primary">Verbinden</button></div>
+      </form>
+    </div>`;
+  }
+  if (!Cloud.loggedIn()) {
+    return `
+    <div class="card">
+      <h3>☁︎ Anmelden</h3>
+      <p class="small" id="cloud-state">${cloudStateText()}</p>
+      <form class="form" data-login>
+        <label>E-Mail <input type="email" name="email" required autocomplete="username"></label>
+        <label>Passwort <input type="password" name="password" required minlength="6" autocomplete="current-password"></label>
+        <p class="error" hidden></p>
+        <div class="actions left"><button class="primary" data-mode="in">Anmelden</button><button class="ghost" data-mode="up">Neues Konto anlegen</button></div>
+      </form>
+      <p class="muted small">Verbunden mit ${esc(Cloud.config.url)} · <button class="link small" data-reset>Verbindung ändern</button></p>
+    </div>`;
+  }
+  return `
+    <div class="card">
+      <h3>☁︎ Cloud</h3>
+      <p class="small">Angemeldet als <b>${esc(Cloud.email)}</b></p>
+      <p class="small" id="cloud-state">${cloudStateText()}</p>
+      <div class="actions left">
+        <button class="primary" data-sync>Jetzt synchronisieren</button>
+        <button class="ghost" data-link>Link für weiteres Gerät</button>
+        <button class="ghost" data-logout>Abmelden</button>
+      </div>
+      <p class="muted small">Auf einem neuen Gerät einfach den Link öffnen und mit denselben Zugangsdaten anmelden. Ohne Netz arbeitest du mit der lokalen Kopie weiter – Änderungen werden später übertragen.</p>
+    </div>`;
+}
+
+function bindCloudCard() {
+  const cfg = $('[data-cfg]');
+  if (cfg) cfg.onsubmit = (e) => { e.preventDefault(); Cloud.configure(cfg.url.value, cfg.key.value); render(); };
+  const login = $('[data-login]');
+  if (login) {
+    let mode = 'in';
+    $$('[data-mode]', login).forEach((b) => (b.onclick = () => { mode = b.dataset.mode; }));
+    login.onsubmit = async (e) => {
+      e.preventDefault();
+      const err = $('.error', login);
+      err.hidden = true;
+      const btns = $$('button', login);
+      btns.forEach((b) => (b.disabled = true));
+      try {
+        if (mode === 'up') {
+          const r = await Cloud.signUp(login.email.value.trim(), login.password.value);
+          if (r === 'confirm') { toast('Bestätigungs-Mail verschickt'); err.textContent = 'Bitte bestätige die E-Mail und melde dich dann hier an.'; err.hidden = false; return; }
+        } else {
+          await Cloud.signIn(login.email.value.trim(), login.password.value);
+        }
+        toast('Angemeldet – Daten werden synchronisiert');
+        render();
+      } catch (ex) {
+        err.textContent = /invalid login/i.test(ex.message) ? 'E-Mail oder Passwort falsch.' : /not confirmed/i.test(ex.message) ? 'E-Mail ist noch nicht bestätigt.' : 'Fehler: ' + ex.message;
+        err.hidden = false;
+      } finally { btns.forEach((b) => (b.disabled = false)); }
+    };
+  }
+  const reset = $('[data-reset]');
+  if (reset) reset.onclick = () => { Cloud.resetConfig(); render(); };
+  const sync = $('[data-sync]');
+  if (sync) sync.onclick = () => Cloud.sync();
+  const logout = $('[data-logout]');
+  if (logout) logout.onclick = async () => {
+    if (await confirmDialog('Abmelden? Die Daten bleiben auf diesem Gerät gespeichert.', 'Abmelden')) { await Cloud.signOut(); render(); }
+  };
+  const link = $('[data-link]');
+  if (link) link.onclick = async () => {
+    const url = Cloud.setupLink();
+    try { await navigator.clipboard.writeText(url); toast('Link kopiert'); } catch { /* ignorieren */ }
+    modal(`<h2>Weiteres Gerät verbinden</h2><p class="small">Öffne diesen Link auf dem anderen Gerät und melde dich mit deinen Zugangsdaten an. (Der Link enthält kein Passwort.)</p>
+      <textarea readonly rows="4" class="small">${esc(url)}</textarea><div class="actions"><button class="primary" data-close>OK</button></div>`);
+  };
 }
 
 async function viewMore() {
@@ -817,7 +823,8 @@ async function viewMore() {
   const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : false;
   const last = localStorage.getItem('lastBackup');
   app().innerHTML = `
-    <div class="page-head"><h1>Ablage & Backup</h1></div>
+    <div class="page-head"><h1>Cloud & Backup</h1></div>
+    ${cloudCard()}
     <div class="stats">
       <div class="card stat"><b>${concerts.length}</b><span>Konzerte</span></div>
       <div class="card stat"><b>${bands.length}</b><span>Bands</span></div>
@@ -826,7 +833,7 @@ async function viewMore() {
     </div>
     <div class="card">
       <h3>Backup</h3>
-      <p class="muted small">Alle Daten liegen nur in diesem Browser auf diesem Gerät. Mach regelmäßig ein Backup – damit kannst du die Ablage auch auf ein anderes Gerät übertragen.</p>
+      <p class="muted small">${Cloud.loggedIn() ? 'Zusätzlich zur Cloud kannst du eine Sicherungsdatei mit allen Ridern herunterladen.' : 'Ohne Cloud liegen alle Daten nur in diesem Browser. Mach regelmäßig ein Backup – damit kannst du die Ablage auch auf ein anderes Gerät übertragen.'}</p>
       <p class="small">${last ? 'Letztes Backup: ' + fmtDate(last) : '<span class="warn-text">Noch kein Backup erstellt.</span>'}</p>
       <div class="actions left"><button class="primary" data-export>Backup herunterladen</button>
         <label class="button ghost">Backup einspielen<input type="file" accept="application/json,.json" hidden data-import></label></div>
@@ -837,6 +844,7 @@ async function viewMore() {
       ${persisted ? '' : '<button class="ghost" data-persist>Dauerhaften Speicher anfordern</button>'}
       <p class="muted small">Tipp: Über „Zum Home-Bildschirm hinzufügen“ lässt sich die Ablage wie eine App nutzen – auch offline.</p>
     </div>`;
+  bindCloudCard();
   $('[data-export]').onclick = exportAll;
   $('[data-import]').onchange = (e) => e.target.files[0] && importAll(e.target.files[0]);
   const p = $('[data-persist]');
@@ -858,21 +866,62 @@ async function render() {
 
 window.addEventListener('hashchange', render);
 
-// Dateien auf die Seite ziehen → direkt ablegen (Band/Konzert wird vorbelegt, wenn möglich)
-window.addEventListener('dragover', (e) => { if (!document.querySelector('.modal-backdrop') && e.dataTransfer?.types.includes('Files')) e.preventDefault(); });
-window.addEventListener('drop', async (e) => {
+// Dateien irgendwo auf die Seite ziehen → automatisch erkennen und ablegen
+const dropOverlay = $('#drop-overlay');
+let dragDepth = 0;
+const isFileDrag = (e) => e.dataTransfer?.types?.includes('Files') && !document.querySelector('.modal-backdrop');
+window.addEventListener('dragenter', (e) => { if (isFileDrag(e)) { dragDepth++; dropOverlay.hidden = false; } });
+window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropOverlay.hidden = true; } });
+window.addEventListener('dragover', (e) => { if (isFileDrag(e)) e.preventDefault(); });
+window.addEventListener('drop', (e) => {
+  dragDepth = 0;
+  dropOverlay.hidden = true;
   if (document.querySelector('.modal-backdrop') || !e.dataTransfer?.files.length) return;
   e.preventDefault();
   const [, view, id] = location.hash.split('/');
-  const target = e.target.closest?.('[data-band]');
-  const opts = { files: [...e.dataTransfer.files] };
-  if (view === 'band') opts.bandId = id;
-  if (view === 'concert' && target) { opts.bandId = target.dataset.band; opts.concertId = id; }
-  await uploadDialog(opts);
+  const ctx = {};
+  if (view === 'band') ctx.bandId = id;
+  if (view === 'concert') {
+    ctx.concertId = id;
+    const card = e.target.closest?.('[data-band]');
+    if (card) ctx.bandId = card.dataset.band;
+  }
+  Smart.run(e.dataTransfer.files, ctx);
+});
+$('#add-rider').onclick = async () => {
+  const f = await Smart.pickFiles();
+  if (!f.length) return;
+  const [, view, id] = location.hash.split('/');
+  Smart.run(f, view === 'concert' ? { concertId: id } : view === 'band' ? { bandId: id } : {});
+};
+
+// Cloud-Status im Kopf anzeigen
+const SYNC_LABEL = {
+  off: ['☁︎', 'Cloud nicht eingerichtet'], loggedout: ['☁︎', 'Nicht angemeldet'], ok: ['☁︎ ✓', 'Synchronisiert'],
+  syncing: ['☁︎ ⟳', 'Synchronisiere …'], offline: ['☁︎ ⨯', 'Offline – Änderungen werden später übertragen'], error: ['☁︎ !', 'Fehler beim Synchronisieren'],
+};
+function showSync() {
+  const el = $('#sync');
+  const [icon, label] = SYNC_LABEL[Cloud.state] || SYNC_LABEL.off;
+  el.textContent = icon;
+  el.title = label + (Cloud.error ? ': ' + Cloud.error : '');
+  el.className = 'sync s-' + Cloud.state;
+  const st = $('#cloud-state');
+  if (st) st.innerHTML = cloudStateText();
+}
+Cloud.onState(showSync);
+showSync();
+
+// Änderungen von anderen Geräten → neu zeichnen (aber nicht mitten im Tippen)
+let pendingRender = false;
+Cloud.onRemoteChange(() => {
+  const a = document.activeElement;
+  if (document.querySelector('.modal-backdrop') || (a && a.closest('#app') && /INPUT|TEXTAREA|SELECT/.test(a.tagName))) { pendingRender = true; return; }
   render();
 });
+document.addEventListener('focusout', () => { if (pendingRender && !document.querySelector('.modal-backdrop')) { pendingRender = false; setTimeout(render, 50); } });
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-render();
+render().then(() => Cloud.sync());

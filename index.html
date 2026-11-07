@@ -15,15 +15,29 @@
 <body>
   <header class="top">
     <a href="#/concerts" class="logo"><span class="logo-mark">🎚</span> Rider-Ablage</a>
+    <div class="top-actions">
+      <a href="#/more" id="sync" class="sync" title="Cloud">☁︎</a>
+      <button id="add-rider" class="primary small-btn" title="Rider ablegen – Band und Version werden erkannt">＋ Rider</button>
+    </div>
   </header>
   <main id="app"></main>
   <nav class="tabs">
     <a href="#/concerts" data-tab="concerts"><span>🎤</span>Konzerte</a>
     <a href="#/bands" data-tab="bands"><span>🎸</span>Bands</a>
     <a href="#/search" data-tab="search"><span>🔍</span>Suche</a>
-    <a href="#/more" data-tab="more"><span>💾</span>Backup</a>
+    <a href="#/more" data-tab="more"><span>☁️</span>Cloud</a>
   </nav>
+  <div id="drop-overlay" hidden>
+    <div class="drop-box">
+      <div class="drop-icon">📄</div>
+      <b>Rider hier loslassen</b>
+      <span>Band, Art und Version werden automatisch erkannt</span>
+    </div>
+  </div>
+  <script src="config.js"></script>
   <script src="db.js"></script>
+  <script src="cloud.js"></script>
+  <script src="smart.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

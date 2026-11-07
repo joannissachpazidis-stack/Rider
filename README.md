@@ -1,28 +1,53 @@
 # 🎚 Rider-Ablage
 
-Interaktive Ablage für Techrider, Inputlisten, Stageplots & Co. – für Tontechniker:innen, die Bands und ganze Konzerte mischen.
+Interaktive Ablage für Techrider, Inputlisten, Stageplots & Co. – für Tontechniker:innen, die Bands und ganze Konzerte mischen. Mit Cloud-Sync für alle Geräte.
 
 ## Funktionen
 
-- **Konzerte** mit Datum, Ort, Notizen und Line-up (Reihenfolge & Spielzeiten).
-- **Unterlagen pro Band** (PDF, Bilder, Text, Excel … oder reine Notizen), sortiert nach Art: Techrider, Inputliste, Stageplot, Monitoring, Lichtrider, Hospitality, Kontakte, Notizen, Sonstiges.
-- **Zuordnung zu Konzerten:** Jede Band im Konzert bekommt die passenden Unterlagen. Die Dateien liegen nur einmal bei der Band.
-- **Rider-Abfrage:** Wird eine Band, für die es schon Unterlagen gibt, zu einem Konzert hinzugefügt, fragt die App bei jeder Unterlage: *Aktuell* (wird gleich zugeordnet), *Nicht nötig* oder *Veraltet* (wird archiviert, und du kannst sofort die neue Version hochladen).
-- **Bands-Suche** und **globale Suche** über Bands, Konzerte, Orte, Dateinamen und Notizen.
-- **Hinweise:** Rider, die seit über 12 Monaten nicht bestätigt wurden, sind als „alt?“ markiert. Konzerte zeigen, welche Bands noch keinen Rider haben.
-- **Versionen:** Beim Hochladen werden ältere Unterlagen derselben Art automatisch als veraltet markiert. Ältere Konzerte behalten die Version, mit der sie gespielt wurden.
-- **Art wird erkannt:** Aus dem Dateinamen (z. B. „Inputlist.pdf“ → Inputliste).
-- **Drag & Drop**, Vorschau für PDF, Bilder und Text.
-- **Backup** als JSON-Datei (inkl. aller Dateien) exportieren und wieder einspielen, z. B. um auf ein anderes Gerät umzuziehen.
-- **Offline-fähig & installierbar** (PWA): „Zum Home-Bildschirm hinzufügen“.
+### Rider einfach reinziehen
+Datei(en) irgendwo auf die Seite ziehen oder oben auf **＋ Rider** tippen. Die App liest den Inhalt (PDF, Word, Excel, Text) und entscheidet selbst:
 
-## Daten
+| Situation | Was passiert |
+|---|---|
+| **Bekannte Band, identische Datei** | „Ist aktuell“ – nichts wird neu gespeichert, nur als bestätigt markiert |
+| **Bekannte Band, gleicher Inhalt** (nur neu exportiert, anderer Dateiname) | ebenfalls „aktuell“, kein neues Speichern |
+| **Bekannte Band, Inhalt geändert** | neue Version wird gespeichert, alte archiviert. Die Änderungen werden angezeigt (+/− Zeilen). In allen anstehenden Konzerten wird automatisch die neue Version eingesetzt |
+| **Alte, schon archivierte Version** | wird erkannt und ignoriert |
+| **Neue Band** | Abfrage: Name (Vorschlag aus Dateiname/Inhalt), Genre, Kontakt (E-Mail/Telefon werden aus dem Rider gelesen) und zu welchem Konzert sie gehört – auch direkt ein neues Konzert anlegen |
 
-Alles wird lokal im Browser (IndexedDB) gespeichert. Es gibt keinen Server und keinen Account. **Regelmäßig Backups machen** (Tab „Backup“).
+Erkannt wird die Band über den Dateinamen, den Text im Rider und die Ähnlichkeit zu vorhandenen Ridern. Die Art (Techrider, Inputliste, Stageplot, Hospitality …) und das Datum („Stand: …“) werden ebenfalls erkannt. Vor dem Speichern zeigt ein Prüfdialog alles an, jede Entscheidung lässt sich ändern. Bei mehreren Dateien kann man alle auf einmal einem Konzert zuordnen.
+
+Wird eine Datei auf die Karte einer Band im Konzert gezogen, ist Band und Konzert schon festgelegt.
+
+### Konzerte & Bands
+- Konzerte mit Datum, Ort, Notizen und Line-up (Reihenfolge, Spielzeiten).
+- Wird eine bekannte Band zu einem Konzert hinzugefügt, fragt die App, ob die vorhandenen Rider noch aktuell sind, und ordnet sie direkt zu.
+- Bands-Suche und **Volltextsuche** – auch im Text der Rider (z. B. „sm58“, „Flügel“).
+- Hinweise auf Rider, die seit über 12 Monaten nicht bestätigt wurden, und auf Bands ohne Rider.
+
+### Cloud & Offline
+- Sync über **Supabase** (kostenlos): Daten und Dateien sind auf Handy, Laptop und Tablet gleich.
+- Die App arbeitet immer mit einer lokalen Kopie – funktioniert also auch ohne Netz in der Venue. Änderungen werden übertragen, sobald wieder Verbindung besteht.
+- Zusätzlich Backup als Datei (inkl. aller Rider).
+- Installierbar als App („Zum Home-Bildschirm hinzufügen“).
+
+## Cloud einrichten (einmalig, ca. 5 Minuten)
+
+1. Auf [supabase.com](https://supabase.com) kostenlos registrieren und ein **neues Projekt** anlegen.
+2. Im Projekt **SQL Editor** öffnen, den Inhalt von [`supabase/schema.sql`](supabase/schema.sql) einfügen und **Run** klicken.
+3. Unter **Project Settings → API** die **Project URL** und den **anon / publishable key** kopieren.
+4. In der App auf **Cloud** gehen, beides eintragen, **Verbinden** und **Neues Konto anlegen**.
+5. Weitere Geräte: In der App „Link für weiteres Gerät“ öffnen und dort anmelden.
+   Alternativ URL und Key in [`config.js`](config.js) eintragen, dann ist jedes Gerät automatisch verbunden.
+
+**Tipps**
+- Wenn Supabase eine Bestätigungs-Mail schickt: Link anklicken, dann in der App anmelden.
+- Nachdem dein Konto angelegt ist, unter *Authentication → Sign In / Providers* „Allow new users to sign up“ ausschalten. Dann kann niemand sonst dein Projekt nutzen (die Daten sind ohnehin pro Konto geschützt).
+- Der anon-Key ist dafür gedacht, öffentlich zu sein. Geschützt wird über Login und Row Level Security.
 
 ## Starten
 
-Es gibt keinen Build-Schritt. Die Dateien müssen nur über einen Webserver ausgeliefert werden:
+Kein Build-Schritt nötig – die Dateien müssen nur über einen Webserver ausgeliefert werden:
 
 ```bash
 python3 -m http.server 8000
@@ -30,3 +55,7 @@ python3 -m http.server 8000
 ```
 
 Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch auswählen → Ordner `/ (root)`.
+
+## Technik
+- Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
+- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `app.js` – Oberfläche.

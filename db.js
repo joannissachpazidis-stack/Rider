@@ -1,9 +1,12 @@
 'use strict';
-// Kleine IndexedDB-Hülle. Alle Daten (inkl. Dateien) bleiben lokal im Browser.
+// Lokale Datenbank (IndexedDB). Sie ist immer die Arbeitskopie, damit die App
+// auch offline (z. B. in der Venue ohne Netz) funktioniert. Jede Änderung wird
+// als "dirty" markiert und von cloud.js mit der Cloud abgeglichen.
 const DB = (() => {
   const NAME = 'rider-ablage';
   const VERSION = 1;
   let dbp = null;
+  const listeners = new Set();
 
   function open() {
     if (!dbp) {
@@ -28,16 +31,42 @@ const DB = (() => {
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
-
   async function store(name, mode = 'readonly') {
     return (await open()).transaction(name, mode).objectStore(name);
   }
+  const alive = (o) => o && !o.deleted;
 
-  return {
+  // Rohzugriff ohne Sync-Markierung (für den Abgleich selbst)
+  const raw = {
     async all(name) { return req((await store(name)).getAll()); },
     async get(name, id) { return req((await store(name)).get(id)); },
     async put(name, obj) { await req((await store(name, 'readwrite')).put(obj)); return obj; },
     async del(name, id) { return req((await store(name, 'readwrite')).delete(id)); },
-    async byIndex(name, index, value) { return req((await store(name)).index(index).getAll(value)); },
+  };
+
+  function changed(name, obj) { listeners.forEach((f) => f(name, obj)); }
+
+  return {
+    STORES: ['bands', 'concerts', 'docs'],
+    raw,
+    onChange(fn) { listeners.add(fn); },
+    async all(name) { return (await raw.all(name)).filter(alive); },
+    async get(name, id) { const o = await raw.get(name, id); return alive(o) ? o : undefined; },
+    async byIndex(name, index, value) { return (await req((await store(name)).index(index).getAll(value))).filter(alive); },
+    async put(name, obj) {
+      obj.updatedAt = new Date().toISOString();
+      obj.dirty = true;
+      await raw.put(name, obj);
+      changed(name, obj);
+      return obj;
+    },
+    // Löschen hinterlässt einen "Grabstein", damit die Löschung auch auf andere Geräte kommt.
+    async del(name, id) {
+      const old = await raw.get(name, id);
+      if (!old) return;
+      const tomb = { id, deleted: true, dirty: true, updatedAt: new Date().toISOString(), bandId: old.bandId ?? null };
+      await raw.put(name, tomb);
+      changed(name, tomb);
+    },
   };
 })();
