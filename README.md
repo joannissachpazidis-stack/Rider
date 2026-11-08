@@ -24,8 +24,17 @@ Wird eine Datei auf die Karte einer Band im Konzert gezogen, ist Band und Konzer
 - **Inputliste:** wird aus dem Rider gelesen (Kanal laut Band-Rack/Split, Quelle, Mikro/DI, Stativ, 48V, Notiz). Lässt sich bearbeiten oder per „Liste einfügen“ aus E-Mail/Excel übernehmen. Kommt ein neuer Rider, schlägt die App das Neu-Einlesen vor.
 - **Patch:** Stagebox-Profil wählen → die App legt jeden Band-Kanal auf den passenden Kanal deiner Stagebox (✓ passend, ≈ ähnlich, ＋ auf freien Kanal, Stereo-Paare bleiben nebeneinander). Jede Zeile lässt sich von Hand umlegen (wird pro Band und Profil gespeichert). Export: Kopieren (für Excel/Mail), CSV, Drucken/PDF.
 
+- **Direkt in der Patch-Tabelle ändern:** 48V per Klick, Mikro, Stativ und Notiz – wird in der Inputliste der Band gespeichert.
+- **Patchliste drucken:** immer Kanal, Stagebox-Kanal und Übergabe-Kanal der Band, wahlweise zusätzlich 48V, Mikro, Stativ, Notiz. Mit Konzert und Spielzeit im Kopf, wenn du über das Konzert kommst.
+- **Mix-Infos korrigieren:** jede Info lässt sich überschreiben oder ausblenden, eigene Infos und „Meine Notizen zum Mix“ ergänzen.
+
 ### Stagebox-Profile
 Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben willst – aus der Standard-Vorlage (32 Kanäle), leer, aus der Inputliste einer Band oder per eingefügter Liste. Pro Konzert lässt sich festlegen, welche Stagebox dort genutzt wird; der „🎛 Patch“-Knopf bei jeder Band nutzt dann dieses Profil.
+
+### Konzerte
+- Anstehende Konzerte nach Datum und Uhrzeit (das nächste oben, mit „Heute“, „Morgen“, „in 5 Tagen“), Konzerte ohne Datum separat, vergangene eingeklappt. Vergangene Konzerte bleiben mit den damals gültigen Ridern erhalten.
+- **Alle Patchlisten drucken:** eine Seite pro Band, mit Spielzeit.
+- **Material-Bedarf:** wie viele Mikros (nach Modell), DIs, Stative, Funkstrecken und 48V-Kanäle die größte Band braucht.
 
 ### Konzerte & Bands
 - Konzerte mit Datum, Ort, Notizen und Line-up (Reihenfolge, Spielzeiten).

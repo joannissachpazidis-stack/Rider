@@ -411,7 +411,7 @@ const Smart = (() => {
     const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
     const bandByName = (n) => bands.find((b) => norm(b.name) === norm(n)) || null;
     const t0 = today();
-    const upcoming = concerts.filter((c) => (c.date || '9999') >= t0).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+    const upcoming = concerts.filter((c) => (c.date || '9999') >= t0).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
     const past = concerts.filter((c) => (c.date || '9999') < t0).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 25);
 
     const items = infos.map((info) => {

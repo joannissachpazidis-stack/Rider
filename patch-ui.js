@@ -5,6 +5,21 @@
 const PatchUI = (() => {
   let editing = null; // Band-ID, deren Inputliste gerade bearbeitet wird
   let hideEmpty = localStorage.getItem('patch.hideEmpty') === '1';
+  let showHidden = false;
+  let ctx = null; // aktuelle Patch-Ansicht (für Druckblatt-Aktualisierung)
+  const PRINT_COLS = { phantom: '48V', mic: 'Mikro / DI', stand: 'Stativ', note: 'Notiz' };
+  const printCols = () => ({ phantom: true, mic: false, stand: false, note: false, ...(JSON.parse(localStorage.getItem('patch.printCols') || '{}')) });
+
+  // Mix-Infos mit deinen Korrekturen und eigenen Einträgen zusammenführen
+  function factsFor(b, docs, rows) {
+    const ed = b.factEdits || {};
+    const list = Patch.insights(docs, rows).map((f) => {
+      const e = ed[f.title];
+      return e ? { ...f, value: e.value ?? f.value, hidden: !!e.hidden, edited: e.value != null, auto: f.value } : f;
+    });
+    for (const c of b.customFacts || []) list.push({ icon: '📝', title: c.title, value: c.value, level: 'info', quotes: [], custom: c.id });
+    return list;
+  }
 
   const HOW = {
     exact: ['✓', 'ok', 'passt genau'],
@@ -21,23 +36,30 @@ const PatchUI = (() => {
   /* ---------- Bereich „Überblick“: Mix-Infos + Inputliste ---------- */
   function overview(b, docs) {
     const inp = rowsOf(b, docs);
-    const facts = Patch.insights(docs, inp.rows);
+    const facts = factsFor(b, docs, inp.rows);
+    const hidden = facts.filter((f) => f.hidden);
     const isEdit = editing === b.id;
     const src = inp.source;
     return `
-      <h3 class="section">Für den Mix</h3>
+      <div class="page-head"><h3 class="section">Für den Mix</h3>
+        <button class="ghost small-btn no-print" data-addfact>+ eigene Info</button></div>
       ${docs.some((d) => !d.archived && d.text) ? '' : '<p class="muted small">Noch kein lesbarer Rider abgelegt – die Infos erscheinen, sobald ein Rider (PDF, Word, Excel, Text) da ist.</p>'}
-      <div class="facts">${facts.map((f) => `
-        <div class="fact lvl-${f.level}">
-          <div class="fact-head"><span class="fact-icon">${f.icon}</span><span class="fact-title">${esc(f.title)}</span></div>
+      <div class="facts">${facts.filter((f) => showHidden || !f.hidden).map((f) => `
+        <div class="fact lvl-${f.level} ${f.hidden ? 'is-hidden' : ''} ${f.edited || f.custom ? 'is-edited' : ''}">
+          <div class="fact-head"><span class="fact-icon">${f.icon}</span><span class="fact-title">${esc(f.title)}</span>
+            <button class="icon fact-edit no-print" data-fact="${esc(f.custom || f.title)}" data-custom="${f.custom ? 1 : ''}" title="Korrigieren / ausblenden" aria-label="${esc(f.title)} bearbeiten">✎</button></div>
           <div class="fact-value">${esc(f.value)}</div>
-          ${f.quotes.length ? `<details class="quotes"><summary>aus dem Rider</summary>${f.quotes.map((q) => `<q>${esc(q.length > 220 ? q.slice(0, 220) + '…' : q)}</q>`).join('')}</details>` : ''}
+          ${f.edited ? `<div class="fact-auto small">von dir korrigiert · erkannt: ${esc(f.auto)}</div>` : ''}
+          ${f.quotes.length ? `<details class="quotes"><summary>aus dem Rider</summary>${f.quotes.map((q) => `<q>${esc(q.length > 260 ? q.slice(0, 260) + '…' : q)}</q>`).join('')}</details>` : ''}
         </div>`).join('')}</div>
+      ${hidden.length ? `<p class="small no-print"><button class="link" data-showhidden>${showHidden ? 'Ausgeblendete verbergen' : `${hidden.length} ausgeblendete Info${hidden.length > 1 ? 's' : ''} anzeigen`}</button></p>` : ''}
+      <label class="lbl mixnotes no-print">📝 Meine Notizen zum Mix
+        <textarea rows="2" data-mixnotes placeholder="z. B. Snare sehr laut, Sängerin will viel Hall, Bass über DI + Amp …">${esc(b.mixNotes || '')}</textarea></label>
 
       <div class="page-head"><h3 class="section">Inputliste der Band</h3>
         <div class="head-actions no-print">${isEdit ? '' : `<button class="ghost small-btn" data-inedit>✎ Bearbeiten</button>
           ${inp.rows.length ? `<a class="button primary small-btn" href="#/band/${b.id}/patch">🎛 Patch erstellen</a>` : ''}`}</div></div>
-      <p class="muted small">${src ? `Gelesen aus „${esc(src.title)}“${src.date ? ' (Stand ' + fmtDate(src.date) + ')' : ''}` : 'Keine Inputliste im Rider gefunden.'}${inp.edited ? ' · <span class="badge accent">von dir bearbeitet</span>' : ''}
+      <p class="muted small">${src ? `Gelesen aus „${esc(src.title)}“${src.date ? ' (Stand ' + fmtDate(src.date) + ')' : ''}` : inp.edited ? 'Von dir angelegt' : 'Keine Inputliste im Rider gefunden.'}${inp.edited ? ' · <span class="badge accent">von dir bearbeitet</span>' : ''}
         ${inp.rows.length ? ' · Kanalnummern laut Band (z. B. ihr In-Ear-Rack / Split)' : ''}</p>
       ${inp.newer ? `<p class="hint small">Es gibt einen neueren Rider („${esc(inp.newer.title)}“). <button class="link" data-reparse>Inputliste neu einlesen</button> (deine Änderungen gehen dabei verloren)</p>` : ''}
       ${isEdit ? editTable(inp.rows) : viewTable(inp.rows)}
@@ -96,6 +118,14 @@ const PatchUI = (() => {
       b.inputList = edited ? { rows: rows.sort((x, y) => x.ch - y.ch), sourceDocId: inp.source?.id || b.inputList?.sourceDocId || null, edited: true, savedAt: nowIso() } : null;
       await DB.put('bands', b);
     };
+    $$('[data-fact]', root).forEach((x) => (x.onclick = () => factDialog(b, docs, x.dataset.fact, !!x.dataset.custom)));
+    const af = $('[data-addfact]', root);
+    if (af) af.onclick = () => factDialog(b, docs, null, true);
+    const sh = $('[data-showhidden]', root);
+    if (sh) sh.onclick = () => { showHidden = !showHidden; render(); };
+    const mn = $('[data-mixnotes]', root);
+    let mt = null;
+    if (mn) mn.oninput = () => { clearTimeout(mt); mt = setTimeout(() => { b.mixNotes = mn.value; DB.put('bands', b); }, 500); };
     const ed = $('[data-inedit]', root);
     if (ed) ed.onclick = () => { editing = b.id; render(); };
     $$('[data-reparse]', root).forEach((x) => (x.onclick = async () => {
@@ -142,25 +172,100 @@ const PatchUI = (() => {
   }
 
   /* ---------- Druckblatt: nur das Wesentliche, für alle lesbar ---------- */
-  function printSheet(b, profile, inp, res) {
+  function printSheet(b, profile, inp, res, concert = null, slot = null) {
     const rows = [...res.slots, ...res.overflow].filter((s) => s.input).sort((x, y) => x.ch - y.ch);
-    const dated = inp.source?.date ? ` · Rider vom ${fmtDate(inp.source.date)}` : '';
+    const cols = Object.keys(PRINT_COLS).filter((k) => printCols()[k] && (k !== 'phantom' || rows.some((s) => s.input.r.phantom)));
+    const cell = (k, r) => (k === 'phantom' ? (r.phantom ? '48V' : '') : esc(r[k] || ''));
+    const info = [
+      concert && [concert.title, concert.date && fmtDate(concert.date), concert.venue].filter(Boolean).map(esc).join(' · '),
+      slot?.time && `Spielzeit ${esc(slot.time)}`,
+      `Stagebox: ${esc(profile.name)}`,
+      inp.source?.date && `Rider vom ${fmtDate(inp.source.date)}`,
+      `Stand ${fmtDate(today())}`,
+    ].filter(Boolean).join(' · ');
     return `
       <section class="print-sheet print-only">
-        <header class="ps-head">
-          <h1>${esc(b.name)}</h1>
-          <p>Patchliste · Stagebox: ${esc(profile.name)}${dated} · Stand ${fmtDate(today())}</p>
-        </header>
+        <header class="ps-head"><h1>${esc(b.name)}</h1><p>Patchliste · ${info}</p></header>
         <table class="ps-table">
-          <thead><tr><th class="ps-name">Kanal</th><th class="ps-num">Stagebox</th><th class="ps-num">Übergabe Band</th></tr></thead>
-          <tbody>${rows.map((s) => `<tr><td class="ps-name">${esc(s.input.r.source)}</td><td class="ps-num">${s.ch}</td><td class="ps-num">${s.input.r.ch}</td></tr>`).join('')}</tbody>
+          <thead><tr><th class="ps-name">Kanal</th><th class="ps-num">Stagebox</th><th class="ps-num">Übergabe Band</th>${cols.map((k) => `<th class="ps-x ps-${k}">${PRINT_COLS[k]}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map((s) => `<tr><td class="ps-name">${esc(s.input.r.source)}</td><td class="ps-num">${s.ch}</td><td class="ps-num">${s.input.r.ch}</td>${cols.map((k) => `<td class="ps-x ps-${k}">${cell(k, s.input.r)}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
         <p class="ps-foot">${rows.length} Kanäle</p>
       </section>`;
   }
 
+  function refreshPrint() {
+    if (!ctx) return;
+    const inp = rowsOf(ctx.b, ctx.docs);
+    const res = Patch.generate(inp.rows, ctx.profile, ctx.b.patchOverrides?.[ctx.profile.id] || {});
+    const el = $('.print-sheet', app());
+    if (el) el.outerHTML = printSheet(ctx.b, ctx.profile, inp, res, ctx.concert, ctx.slot);
+  }
+
+  /** Alle Patchlisten eines Konzerts (eine Seite pro Band) drucken. */
+  async function printConcert(c) {
+    const profile = c.profileId && (await DB.get('profiles', c.profileId));
+    if (!profile) { toast('Bitte zuerst oben eine Stagebox für das Konzert wählen'); return; }
+    const [bands, docs] = await Promise.all([Data.bands(), Data.docs()]);
+    const sheets = [], missing = [];
+    for (const e of c.lineup) {
+      const b = bands.find((x) => x.id === e.bandId);
+      if (!b) continue;
+      const bd = docs.filter((d) => d.bandId === b.id);
+      const inp = rowsOf(b, bd);
+      if (!inp.rows.length) { missing.push(b.name); continue; }
+      sheets.push(printSheet(b, profile, inp, Patch.generate(inp.rows, profile, b.patchOverrides?.[profile.id] || {}), c, e));
+    }
+    if (!sheets.length) { toast('Für keine Band gibt es eine Inputliste'); return; }
+    if (missing.length && !(await confirmDialog(`Ohne Inputliste (wird übersprungen): <b>${missing.map(esc).join(', ')}</b>. Trotzdem drucken?`, 'Drucken'))) return;
+    let root = $('#print-root');
+    if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
+    root.innerHTML = sheets.join('');
+    document.body.classList.add('print-all');
+    const done = () => { document.body.classList.remove('print-all'); root.innerHTML = ''; window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    setTimeout(() => window.print(), 50);
+  }
+
+  /* ---------- Mix-Info korrigieren ---------- */
+  async function factDialog(b, docs, key, custom) {
+    const inp = rowsOf(b, docs);
+    const auto = custom ? null : Patch.insights(docs, inp.rows).find((f) => f.title === key);
+    const cf = custom && key ? (b.customFacts || []).find((c) => c.id === key) : null;
+    const cur = custom ? cf : (b.factEdits || {})[key];
+    const res = await modal(`
+      <div class="modal-head"><h2>${custom ? (cf ? 'Eigene Info' : 'Neue Info') : esc(key)}</h2><button class="icon" data-close aria-label="Schließen">✕</button></div>
+      <form class="form">
+        ${custom ? `<label>Titel <input name="title" value="${esc(cf?.title || '')}" placeholder="z. B. Monitorwünsche" required autofocus></label>` : `<p class="small muted">Erkannt: <b>${esc(auto?.value || '–')}</b></p>`}
+        <label>${custom ? 'Info' : 'Richtiger Wert'} <input name="value" value="${esc(cur?.value ?? (custom ? '' : auto?.value || ''))}" ${custom ? '' : 'autofocus'}></label>
+        ${custom ? '' : `<label class="check"><input type="checkbox" name="hidden" ${cur?.hidden ? 'checked' : ''}> Diese Info ausblenden</label>`}
+        <div class="actions">
+          ${cf ? '<button type="button" class="ghost danger-text" data-del>Löschen</button>' : ''}
+          ${!custom && cur ? '<button type="button" class="ghost" data-reset>Zurücksetzen</button>' : ''}
+          <span class="grow"></span>
+          <button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">Speichern</button></div>
+      </form>`, (el, done) => {
+      const f = $('form', el);
+      f.onsubmit = (e) => { e.preventDefault(); const el2 = f.elements;
+        done({ title: el2.namedItem('title')?.value.trim(), value: el2.namedItem('value').value.trim(), hidden: !!el2.namedItem('hidden')?.checked }); };
+      const d = $('[data-del]', el); if (d) d.onclick = () => done('delete');
+      const r = $('[data-reset]', el); if (r) r.onclick = () => done('reset');
+    });
+    if (!res) return;
+    if (custom) {
+      b.customFacts = (b.customFacts || []).filter((c) => c.id !== key);
+      if (res !== 'delete' && res.title) b.customFacts.push({ id: cf?.id || uid(), title: res.title, value: res.value });
+    } else {
+      b.factEdits ||= {};
+      if (res === 'reset') delete b.factEdits[key];
+      else b.factEdits[key] = { value: res.value && res.value !== auto?.value ? res.value : null, hidden: !!res.hidden };
+    }
+    await DB.put('bands', b);
+    render();
+  }
+
   /* ---------- Bereich „Patch“ ---------- */
-  async function patchTab(b, docs, profileId) {
+  async function patchTab(b, docs, profileId, concertId) {
     const profiles = (await DB.all('profiles')).sort(byName);
     const inp = rowsOf(b, docs);
     const pid = profiles.find((p) => p.id === profileId)?.id || profiles.find((p) => p.id === localStorage.getItem('patch.lastProfile'))?.id || profiles[0]?.id;
@@ -176,6 +281,10 @@ const PatchUI = (() => {
     localStorage.setItem('patch.lastProfile', pid);
     const ov = b.patchOverrides?.[pid] || {};
     const res = Patch.generate(inp.rows, profile, ov);
+    const concert = concertId ? await DB.get('concerts', concertId) : null;
+    ctx = { b, docs, profile, concert, slot: concert?.lineup.find((e) => e.bandId === b.id) || null };
+    const pc = printCols();
+    const ed = (r, k, ph = '') => `<input class="cell-in" data-ech="${r.ch}" data-k="${k}" value="${esc(r[k] || '')}" placeholder="${ph}" aria-label="${k}">`;
     const used = res.slots.filter((s) => s.input).length + res.overflow.length;
     const count = (h) => res.slots.filter((s) => s.how === h).length;
     const options = (sel) => `<option value="">— frei —</option>${inp.rows.map((r) => `<option value="${r.ch}" ${sel === r.ch ? 'selected' : ''}>${r.ch} · ${esc(r.source)}</option>`).join('')}`;
@@ -189,10 +298,10 @@ const PatchUI = (() => {
         <td class="how"><span class="how-${cls}" title="${esc(title)}">${icon}</span></td>
         <td class="band-ch no-print">${over ? `<b>${r.ch}</b>` : `<select data-ov="${s.ch}" aria-label="Band-Kanal für Stagebox ${s.ch}">${options(r?.ch)}</select>`}</td>
         <td><b>${r ? esc(r.source) : ''}</b></td>
-        <td>${r ? esc(r.mic) : ''}</td>
-        <td>${r ? esc(r.stand) : ''}</td>
-        <td>${r?.phantom ? '●' : ''}</td>
-        <td class="small">${r ? esc(r.note) : esc(s.note || '')}</td>
+        <td>${r ? ed(r, 'mic') : ''}</td>
+        <td>${r ? ed(r, 'stand') : ''}</td>
+        <td class="ph">${r ? `<label class="ph-box" title="+48V Phantomspeisung"><input type="checkbox" data-ech="${r.ch}" data-k="phantom" ${r.phantom ? 'checked' : ''}><span>48V</span></label>` : ''}</td>
+        <td>${r ? ed(r, 'note', s.note || '') : `<span class="small muted">${esc(s.note || '')}</span>`}</td>
       </tr>`;
     };
     return `
@@ -201,7 +310,8 @@ const PatchUI = (() => {
           <select data-profile>${profiles.map((p) => `<option value="${p.id}" ${p.id === pid ? 'selected' : ''}>${esc(p.name)} (${p.channels.length} Kanäle)</option>`).join('')}<option value="__new">+ Neues Profil …</option></select></label>
         <a class="small" href="#/stagebox/${pid}">Profil bearbeiten</a>
       </div>
-      ${printSheet(b, profile, inp, res)}
+      ${concert ? `<p class="small no-print">Für Konzert <a href="#/concert/${concert.id}">${esc(concert.title)}</a>${concert.date ? ' · ' + fmtDate(concert.date) : ''}</p>` : ''}
+      ${printSheet(b, profile, inp, res, concert, ctx.slot)}
       <p class="small patch-sum no-print">${used} von ${inp.rows.filter((r) => !['spare', 'empty'].includes(Patch.classify(r.source).cls)).length} Band-Kanälen gepatcht ·
         <span class="how-ok">✓ ${count('exact') + count('class')} passend</span> ·
         <span class="how-similar">≈ ${count('similar') + count('family')} ähnlich</span> ·
@@ -218,9 +328,13 @@ const PatchUI = (() => {
         ${Object.keys(ov).length ? '<button class="ghost small-btn" data-ovreset>Manuelle Zuordnung zurücksetzen</button>' : ''}
         <button class="ghost small-btn" data-copy>📋 Kopieren</button>
         <button class="ghost small-btn" data-csv>⬇︎ CSV</button>
-        <button class="primary small-btn" data-print>🖨 Patchliste drucken / PDF</button>
       </div>
-      <p class="muted small no-print">Die Zuordnung erfolgt über die Instrument-Bezeichnungen. Über „← Band-Kanal“ kannst du jede Zeile selbst ändern – das wird für diese Band und dieses Profil gespeichert.</p>`;
+      <div class="print-box no-print">
+        <div><b>🖨 Patchliste drucken</b><br><span class="small muted">Immer drauf: Kanal, Stagebox-Kanal, Übergabe-Kanal der Band. Zusätzlich:</span>
+          <div class="print-opts">${Object.entries(PRINT_COLS).map(([k, l]) => `<label class="check small"><input type="checkbox" data-pcol="${k}" ${pc[k] ? 'checked' : ''}> ${l}</label>`).join('')}</div></div>
+        <button class="primary" data-print>Drucken / PDF</button>
+      </div>
+      <p class="muted small no-print">Die Zuordnung erfolgt über die Instrument-Bezeichnungen. Über „← Band-Kanal“ kannst du jede Zeile umlegen. Mikro, Stativ, 48V und Notiz lassen sich direkt in der Tabelle ändern – das wird in der Inputliste der Band gespeichert.</p>`;
   }
 
   async function exportRows(b, docs, pid) {
@@ -271,7 +385,23 @@ const PatchUI = (() => {
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     };
-    $('[data-print]', root).onclick = () => window.print();
+    $('[data-print]', root).onclick = () => { refreshPrint(); window.print(); };
+    $$('[data-pcol]', root).forEach((x) => (x.onchange = () => {
+      localStorage.setItem('patch.printCols', JSON.stringify({ ...printCols(), [x.dataset.pcol]: x.checked }));
+      refreshPrint();
+    }));
+    // Direkt in der Tabelle bearbeiten → Inputliste der Band
+    $$('[data-ech]', root).forEach((x) => (x.onchange = async () => {
+      const inp = rowsOf(b, docs);
+      if (!b.inputList?.edited) b.inputList = { rows: inp.rows.map((r) => ({ ...r })), sourceDocId: inp.source?.id || null, edited: true, savedAt: nowIso() };
+      const row = b.inputList.rows.find((r) => r.ch === +x.dataset.ech);
+      if (!row) return;
+      row[x.dataset.k] = x.type === 'checkbox' ? x.checked : x.value.trim();
+      b.inputList.savedAt = nowIso();
+      await DB.put('bands', b);
+      refreshPrint();
+      toast('Gespeichert');
+    }));
   }
 
   /* ---------- Stagebox-Profile ---------- */
@@ -408,5 +538,5 @@ const PatchUI = (() => {
     };
   }
 
-  return { overview, bindOverview, patchTab, bindPatch, viewStagebox, viewProfile, profileDialog };
+  return { overview, bindOverview, patchTab, bindPatch, viewStagebox, viewProfile, profileDialog, printConcert };
 })();

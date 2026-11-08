@@ -283,8 +283,9 @@ async function concertDialog(concert = null) {
       <label>Name / Veranstaltung <input name="title" required value="${esc(concert?.title)}" placeholder="z. B. Sommerfest Open Air" autofocus></label>
       <div class="row2">
         <label>Datum <input type="date" name="date" value="${esc(concert?.date || today())}"></label>
-        <label>Ort / Venue <input name="venue" value="${esc(concert?.venue)}" placeholder="Club, Stadt"></label>
+        <label>Beginn <input type="time" name="time" value="${esc(concert?.time || '')}"></label>
       </div>
+      <label>Ort / Venue <input name="venue" value="${esc(concert?.venue)}" placeholder="Club, Stadt"></label>
       ${isNew ? `
       <label>Bands
         <div class="inline">
@@ -328,7 +329,7 @@ async function concertDialog(concert = null) {
       if (isNew && form.band.value.trim()) { const v = form.band.value.trim(); if (!chosen.some((c) => norm(c) === norm(v))) chosen.push(v); }
       const title = form.title.value.trim() || (chosen.length ? chosen.join(' / ') : '');
       if (!title) { const er = $('.error', el); er.textContent = 'Bitte einen Namen oder mindestens eine Band angeben.'; er.hidden = false; return; }
-      done({ title, date: form.date.value, venue: form.venue.value.trim(), notes: form.notes.value.trim() });
+      done({ title, date: form.date.value, time: form.time.value, venue: form.venue.value.trim(), notes: form.notes.value.trim() });
     };
   });
   if (!res) return;
@@ -440,31 +441,46 @@ function bindDocActions(root) {
 }
 
 /* ---------- Konzerte ---------- */
+// Relative Angabe wie „Heute“, „Morgen“, „in 5 Tagen“
+function relDay(iso) {
+  if (!iso) return '';
+  const d = Math.round((toDate(iso) - toDate(today())) / 86400000);
+  if (d === 0) return 'Heute';
+  if (d === 1) return 'Morgen';
+  if (d === -1) return 'Gestern';
+  if (d > 1 && d < 14) return `in ${d} Tagen`;
+  if (d >= 14 && d < 70) return `in ${Math.round(d / 7)} Wochen`;
+  return '';
+}
+const concertKey = (c) => (c.date || '9999-99-99') + ' ' + (c.time || '99:99');
+
 async function viewConcerts() {
   setTab('concerts');
   const [concerts, bands, docs] = await Promise.all([Data.concerts(), Data.bands(), Data.docs()]);
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const docMap = new Map(docs.map((d) => [d.id, d]));
   const t = today();
-  const upcoming = concerts.filter((c) => (c.date || '9999') >= t).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
-  const past = concerts.filter((c) => (c.date || '9999') < t).sort((a, b) => b.date.localeCompare(a.date));
+  const upcoming = concerts.filter((c) => c.date && c.date >= t).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
+  const undated = concerts.filter((c) => !c.date);
+  const past = concerts.filter((c) => c.date && c.date < t).sort((a, b) => concertKey(b).localeCompare(concertKey(a)));
 
-  const card = (c) => {
+  const card = (c, i, isPast) => {
     const missing = c.lineup.filter((e) => !e.docIds.some((id) => docMap.has(id))).length;
     const outdated = c.lineup.some((e) => e.docIds.some((id) => docMap.get(id)?.archived));
-    const nDocs = c.lineup.reduce((n, e) => n + e.docIds.filter((id) => docMap.has(id)).length, 0);
+    const rel = relDay(c.date);
+    const next = !isPast && i === 0 && c.date;
     return `
-    <a class="card concert-card" href="#/concert/${c.id}">
+    <a class="card concert-card ${next ? 'next' : ''} ${isPast ? 'past' : ''}" href="#/concert/${c.id}">
       <div class="date-box">${c.date ? `<span>${fmtWeekday(c.date)}</span><b>${toDate(c.date).getDate()}</b><span>${toDate(c.date).toLocaleDateString('de-DE', { month: 'short' })}</span>` : '<b>?</b>'}</div>
       <div class="grow">
+        <div class="card-top">${next ? '<span class="badge accent">Als Nächstes</span>' : ''}${rel && !isPast ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}</div>
         <div class="card-title">${esc(c.title)}</div>
-        <div class="muted small">${[c.venue && esc(c.venue), c.date && fmtDate(c.date)].filter(Boolean).join(' · ')}</div>
-        <div class="small">${c.lineup.map((e) => esc(bandMap.get(e.bandId)?.name)).join(' · ') || '<span class="muted">noch keine Bands</span>'}</div>
-        <div class="badges">
-          <span class="badge">${nDocs} Unterlagen</span>
-          ${missing ? `<span class="badge warn">${missing} ohne Rider</span>` : c.lineup.length ? '<span class="badge ok">komplett</span>' : ''}
-          ${outdated ? '<span class="badge warn">veraltete Unterlagen</span>' : ''}
-        </div>
+        <div class="muted small">${[c.time && c.time + ' Uhr', c.venue && esc(c.venue), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
+        <div class="band-chips">${c.lineup.map((e) => {
+          const ok = e.docIds.some((id) => docMap.has(id));
+          return `<span class="bchip ${ok ? 'ok' : 'missing'}" title="${ok ? 'Rider vorhanden' : 'noch kein Rider'}">${esc(bandMap.get(e.bandId)?.name || '?')}</span>`;
+        }).join('') || '<span class="muted small">noch keine Bands</span>'}</div>
+        ${!isPast && (missing || outdated) ? `<div class="badges">${missing ? `<span class="badge warn">${missing} ohne Rider</span>` : ''}${outdated ? '<span class="badge warn">veraltete Unterlagen</span>' : ''}</div>` : ''}
       </div>
     </a>`;
   };
@@ -473,12 +489,66 @@ async function viewConcerts() {
     <div class="page-head"><h1>Konzerte</h1><button class="primary" data-new>+ Neues Konzert</button></div>
     ${!concerts.length ? `
       <div class="empty">
-        <p>Noch keine Konzerte angelegt.</p>
+        <div class="empty-icon">🎤</div>
+        <p><b>Noch keine Konzerte angelegt.</b></p>
         <p class="muted">Lege ein Konzert an und trag die Bands ein – wenn es für eine Band schon einen Rider gibt, wirst du gefragt, ob er noch aktuell ist, und er wird direkt zugeordnet.</p>
       </div>` : ''}
-    ${upcoming.length ? `<h3 class="section">Anstehend</h3><div class="list">${upcoming.map(card).join('')}</div>` : ''}
-    ${past.length ? `<details class="section" ${upcoming.length ? '' : 'open'}><summary><h3>Vergangen (${past.length})</h3></summary><div class="list">${past.map(card).join('')}</div></details>` : ''}`;
+    ${concerts.length && !upcoming.length ? '<p class="muted">Keine anstehenden Konzerte.</p>' : ''}
+    ${upcoming.length ? `<div class="list">${upcoming.map((c, i) => card(c, i, false)).join('')}</div>` : ''}
+    ${undated.length ? `<h3 class="section">Ohne Datum</h3><div class="list">${undated.map((c, i) => card(c, 1, false)).join('')}</div>` : ''}
+    ${past.length ? `<details class="section past-box" ${sessionStorage.getItem('pastOpen') ? 'open' : ''}><summary><h3>Vergangene Konzerte (${past.length})</h3></summary>
+      <p class="muted small">Vergangene Konzerte bleiben mit den damals gültigen Ridern und Patchlisten erhalten.</p>
+      <div class="list">${past.map((c, i) => card(c, i, true)).join('')}</div></details>` : ''}`;
   $('[data-new]').onclick = () => concertDialog();
+  const pb = $('.past-box');
+  if (pb) pb.ontoggle = () => (pb.open ? sessionStorage.setItem('pastOpen', '1') : sessionStorage.removeItem('pastOpen'));
+}
+
+// Material-Bedarf eines Konzerts: was braucht die größte Band höchstens? (Bands spielen nacheinander)
+function materialHtml(c, bandMap, docs) {
+  const per = c.lineup.map((e) => {
+    const b = bandMap.get(e.bandId);
+    return b ? { b, rows: Patch.bandInputs(b, docs.filter((d) => d.bandId === b.id)).rows } : null;
+  }).filter((x) => x && x.rows.length);
+  if (!per.length) return '';
+  const items = new Map();
+  const bump = (key, label, n, band, order) => {
+    const it = items.get(key) || { label, max: 0, by: [], order };
+    it.max = Math.max(it.max, n);
+    it.by.push(`${band}: ${n}`);
+    items.set(key, it);
+  };
+  const DI = /\bdi\b|d\.i|di ?box|j ?48|bss|ar ?133|radial|klark|palmer|line/i;
+  for (const { b, rows } of per) {
+    const cnt = new Map();
+    const inc = (k, label, order) => cnt.set(k, { label, order, n: (cnt.get(k)?.n || 0) + 1 });
+    for (const r of rows) {
+      if (r.mic) {
+        if (DI.test(r.mic)) inc('di', 'DI-Boxen', 2);
+        else {
+          const m = r.mic.replace(/\b(shure|sennheiser|akg|neumann|audix|beyer\w*|electro-?voice|rode|audio-?technica|funk|wireless|eigene?s?|own|mic|mikro\w*)\b/gi, '').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+          if (m) inc('mic:' + norm(m), m, 3);
+          if (/funk|wireless|ulx|qlx|slx|axient|ew ?\d/i.test(r.mic)) inc('wl', 'Funkstrecken', 4);
+        }
+      }
+      if (r.stand) {
+        const st = /gro|tall|big|lang|high/i.test(r.stand) ? 'Stativ groß' : /klein|short|small|kurz|low|mini/i.test(r.stand) ? 'Stativ klein' : /clamp|clip|klemm/i.test(r.stand) ? 'Klemmen / Clips' : 'Stative (ohne Angabe)';
+        inc('st:' + st, st, 5);
+      }
+      if (r.phantom) inc('ph', '+48V-Kanäle', 6);
+    }
+    bump('in', 'Inputs', rows.length, b.name, 1);
+    for (const [k, v] of cnt) bump(k, v.label, v.n, b.name, v.order);
+  }
+  const list = [...items.values()].sort((x, y) => x.order - y.order || y.max - x.max || x.label.localeCompare(y.label));
+  return `
+    <details class="card material">
+      <summary><b>🎤 Material-Bedarf</b> <span class="muted small">– höchster Bedarf einer Band (${per.length} von ${c.lineup.length} Bands mit Inputliste)</span></summary>
+      <div class="table-wrap"><table class="ptable">
+        <thead><tr><th>Material</th><th>max.</th><th>pro Band</th></tr></thead>
+        <tbody>${list.map((it) => `<tr><td><b>${esc(it.label)}</b></td><td class="ch">${it.max}</td><td class="small muted">${it.by.map(esc).join(' · ')}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </details>`;
 }
 
 async function viewConcert(id) {
@@ -512,21 +582,29 @@ async function viewConcert(id) {
         ${newer.length ? `<button class="ghost small-btn" data-check="${e.bandId}">📂 Aus Ablage (${newer.length})</button>` : ''}
         <button class="ghost small-btn" data-upload="${e.bandId}">⬆︎ Rider ablegen</button>
         <button class="ghost small-btn" data-note="${e.bandId}">📝 Notiz</button>
-        <a class="button ghost small-btn" href="#/band/${e.bandId}/patch/${c.profileId || ''}">🎛 Patch</a>
+        <a class="button ghost small-btn" href="#/band/${e.bandId}/patch/${c.profileId || ''}/${c.id}">🎛 Patch</a>
       </div>
     </div>`;
   };
 
+  const rel = relDay(c.date);
+  const isPast = c.date && c.date < today();
   app().innerHTML = `
     <a class="back" href="#/concerts">‹ Konzerte</a>
     <div class="page-head">
       <div><h1>${esc(c.title)}</h1>
-        <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</div></div>
+        <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}
+          ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}</div></div>
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
     </div>
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
-    ${profiles.length ? `<label class="lbl inline-lbl">🎛 Stagebox für dieses Konzert
-      <select data-cprofile><option value="">– wählen –</option>${profiles.map((p) => `<option value="${p.id}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+    <div class="concert-tools card">
+      ${profiles.length ? `<label class="lbl">🎛 Stagebox für dieses Konzert
+        <select data-cprofile><option value="">– wählen –</option>${profiles.map((p) => `<option value="${p.id}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>`
+        : '<p class="small muted">Lege unter „Stagebox“ ein Profil an, um Patchlisten zu erzeugen.</p>'}
+      ${profiles.length && c.lineup.length ? `<button class="primary" data-printall ${c.profileId ? '' : 'disabled title="Erst eine Stagebox wählen"'}>🖨 Alle Patchlisten drucken</button>` : ''}
+    </div>
+    ${materialHtml(c, bandMap, docs)}
     <h3 class="section">Line-up</h3>
     <div class="list">${c.lineup.map(entryHtml).join('') || '<p class="muted">Noch keine Bands.</p>'}</div>
     <form class="add-band card" autocomplete="off">
@@ -538,6 +616,8 @@ async function viewConcert(id) {
   const save = async () => { await DB.put('concerts', c); render(); };
   const cp = $('[data-cprofile]');
   if (cp) cp.onchange = () => { c.profileId = cp.value || null; save(); };
+  const pa = $('[data-printall]');
+  if (pa) pa.onclick = () => PatchUI.printConcert(c);
   $('[data-editc]').onclick = () => concertDialog(c);
   $('[data-delc]').onclick = async () => {
     if (await confirmDialog(`Konzert „${esc(c.title)}“ löschen? Die Rider bleiben bei den Bands gespeichert.`, 'Löschen', true)) {
@@ -609,7 +689,17 @@ async function viewBands() {
   $('[data-newband]').onclick = async () => { const b = await bandDialog(); if (b) location.hash = '#/band/' + b.id; };
 }
 
-async function viewBand(id, tab = '', arg = '') {
+function bandConcerts(bc, bandId) {
+  if (!bc.length) return '<p class="muted">Noch in keinem Konzert.</p>';
+  const t = today();
+  const row = (c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[c.date && fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span>${relDay(c.date) ? `<span class="badge">${relDay(c.date)}</span>` : ''}</a>`;
+  const up = bc.filter((c) => !c.date || c.date >= t).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
+  const past = bc.filter((c) => c.date && c.date < t).sort((a, b) => concertKey(b).localeCompare(concertKey(a)));
+  return `${up.length ? `<div class="list">${up.map(row).join('')}</div>` : '<p class="muted small">Kein anstehendes Konzert.</p>'}
+    ${past.length ? `<details class="section"><summary><h3>Vergangen (${past.length})</h3></summary><div class="list">${past.map(row).join('')}</div></details>` : ''}`;
+}
+
+async function viewBand(id, tab = '', arg = '', arg2 = '') {
   setTab('bands');
   const b = await DB.get('bands', id);
   if (!b) { app().innerHTML = '<p>Band nicht gefunden. <a href="#/bands">Zurück</a></p>'; return; }
@@ -644,13 +734,13 @@ async function viewBand(id, tab = '', arg = '') {
       ${b.contact ? `<div class="notes"><b>Kontakt:</b> ${esc(b.contact)}</div>` : ''}
       ${b.notes ? `<div class="notes">${esc(b.notes)}</div>` : ''}` + tabs + PatchUI.overview(b, docs) + `
       <h3 class="section">Konzerte</h3>
-      <div class="list">${bc.map((c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[fmtDate(c.date), c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span><span class="badge">${c.lineup.find((e) => e.bandId === id).docIds.length} Unterlagen</span></a>`).join('') || '<p class="muted">Noch in keinem Konzert.</p>'}</div>`;
+      ${bandConcerts(bc, id)}`;
     bindHead();
     PatchUI.bindOverview(b, docs);
     return;
   }
   if (t === 'patch') {
-    app().innerHTML = head + tabs + (await PatchUI.patchTab(b, docs, arg));
+    app().innerHTML = head + tabs + (await PatchUI.patchTab(b, docs, arg, arg2));
     bindHead();
     PatchUI.bindPatch(b, docs);
     return;
@@ -898,11 +988,11 @@ async function viewMore() {
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
-  const [, view, id, sub, arg] = (location.hash || '#/concerts').split('/');
+  const [, view, id, sub, arg, arg2] = (location.hash || '#/concerts').split('/');
   const scroll = window.scrollY;
   const sameView = render.last === location.hash;
   render.last = location.hash;
-  const views = { concerts: viewConcerts, concert: () => viewConcert(id), bands: viewBands, band: () => viewBand(id, sub, arg), search: viewSearch, more: viewMore,
+  const views = { concerts: viewConcerts, concert: () => viewConcert(id), bands: viewBands, band: () => viewBand(id, sub, arg, arg2), search: viewSearch, more: viewMore,
     stagebox: () => (id ? PatchUI.viewProfile(id) : PatchUI.viewStagebox()) };
   await (views[view] || viewConcerts)();
   if (seq === renderSeq) window.scrollTo(0, sameView ? scroll : 0);

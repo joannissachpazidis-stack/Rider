@@ -22,7 +22,7 @@ body {
 }
 body.no-scroll { overflow: hidden; }
 a { color: var(--accent); text-decoration: none; }
-h1 { font-size: 1.55rem; margin: 0; line-height: 1.2; }
+h1 { font-size: 1.6rem; margin: 0; line-height: 1.2; letter-spacing: -.01em; }
 h2 { font-size: 1.25rem; margin: .2rem 0; }
 h3 { font-size: 1rem; margin: 0 0 .5rem; }
 .muted { color: var(--muted); }
@@ -37,7 +37,7 @@ header.top {
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid var(--line);
 }
 .logo { color: var(--text); font-weight: 700; letter-spacing: .02em; }
-main { max-width: 860px; margin: 0 auto; padding: 16px; }
+main { max-width: 980px; margin: 0 auto; padding: 18px 16px; }
 nav.tabs {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: center;
   background: rgba(29, 32, 40, .96); backdrop-filter: blur(8px); border-top: 1px solid var(--line);
@@ -118,7 +118,7 @@ a.card:hover { border-color: #46506a; }
 /* Line-up */
 .lineup-head { display: flex; align-items: center; gap: 8px; }
 .time {
-  width: 92px; flex: none; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text);
+  width: 112px; flex: none; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; color: var(--text);
   padding: 6px; font: inherit; font-size: .9rem;
 }
 .lineup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
@@ -375,4 +375,76 @@ main .actions .grow { flex: 1; }
   .ps-table tr { break-inside: avoid; }
   .ps-table thead { display: table-header-group; }
   .ps-foot { font-size: 10pt; margin-top: 3mm; }
+}
+
+/* ===== Feinschliff ===== */
+body { -webkit-font-smoothing: antialiased; }
+button, .button, a.card, .fact, .bchip { transition: border-color .15s, background-color .15s, filter .15s, opacity .15s; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card { box-shadow: 0 1px 0 rgba(255, 255, 255, .02), 0 6px 18px rgba(0, 0, 0, .18); }
+.page-head { margin-bottom: 12px; }
+.section { margin-top: 26px; }
+.empty-icon { font-size: 2.4rem; margin-bottom: 6px; }
+
+/* Konzertliste */
+.card-top { display: flex; gap: 6px; flex-wrap: wrap; }
+.card-top:empty { display: none; }
+.card-top + .card-title { margin-top: 4px; }
+.concert-card.next { border-color: rgba(255, 159, 67, .55); background: linear-gradient(135deg, rgba(255, 159, 67, .09), var(--panel) 60%); }
+.concert-card.next .date-box { background: var(--accent); color: var(--accent-ink); }
+.concert-card.next .date-box b { color: var(--accent-ink); }
+.concert-card.past { opacity: .72; }
+.concert-card.past:hover { opacity: 1; }
+.band-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.bchip { font-size: .8rem; padding: 2px 9px 2px 7px; border-radius: 99px; background: var(--panel2); border: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; }
+.bchip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.bchip.missing::before { background: var(--warn); }
+.past-box > summary { padding: 6px 0; }
+.page-head .badge { margin-left: 6px; }
+
+/* Konzertseite */
+.concert-tools { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 12px 0; }
+.concert-tools .lbl { flex: 1; min-width: 220px; }
+.material { margin: 10px 0; }
+.material > summary { cursor: pointer; list-style: none; }
+.material > summary::-webkit-details-marker { display: none; }
+.material > summary::before { content: '▸ '; color: var(--muted); }
+.material[open] > summary::before { content: '▾ '; }
+.material .table-wrap { margin-top: 10px; }
+
+/* Mix-Infos */
+.fact { position: relative; }
+.fact-head { justify-content: flex-start; }
+.fact-edit { margin-left: auto; min-height: 26px; min-width: 26px; padding: 0; font-size: .9rem; opacity: .45; }
+.fact:hover .fact-edit, .fact-edit:focus-visible { opacity: 1; }
+.fact.is-hidden { opacity: .4; border-style: dashed; }
+.fact.is-edited { border-color: rgba(215, 166, 255, .45); }
+.fact-auto { color: #d7a6ff; margin-top: 2px; }
+.mixnotes { margin: 12px 0 4px; }
+.mixnotes textarea { background: var(--panel); }
+@media (hover: none) { .fact-edit { opacity: .8; } }
+
+/* Patch-Tabelle: direkt bearbeiten */
+.cell-in { min-height: 30px !important; padding: 4px 6px !important; font-size: .86rem; background: transparent; border-color: transparent; min-width: 80px; border-radius: 6px; }
+.cell-in:hover { border-color: var(--line); }
+.cell-in:focus { background: var(--bg); }
+td.ph { text-align: center; }
+.ph-box { display: inline-flex; cursor: pointer; }
+.ph-box input { position: absolute; opacity: 0; pointer-events: none; }
+.ph-box span { font-size: .72rem; font-weight: 700; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+.ph-box input:checked + span { background: var(--danger); border-color: var(--danger); color: #1b0606; }
+.ph-box input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.print-box { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--panel); border: 1px solid rgba(255, 159, 67, .4); border-radius: 12px; padding: 12px 14px; margin-top: 14px; }
+.print-opts { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Druck: alle Patchlisten eines Konzerts */
+#print-root { display: none; }
+@media print {
+  body.print-all main { display: none !important; }
+  body.print-all #print-root { display: block; }
+  #print-root .print-sheet { break-after: page; }
+  #print-root .print-sheet:last-child { break-after: auto; }
+  .ps-table .ps-x { width: auto; text-align: left; font-size: 12pt; font-weight: 600; }
+  .ps-table td.ps-phantom { font-weight: 800; text-align: center; }
+  .ps-table th.ps-phantom { text-align: center; }
 }
