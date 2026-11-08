@@ -460,11 +460,19 @@ async function viewConcerts() {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const docMap = new Map(docs.map((d) => [d.id, d]));
   const t = today();
-  const upcoming = concerts.filter((c) => c.date && c.date >= t).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
-  const undated = concerts.filter((c) => !c.date);
-  const past = concerts.filter((c) => c.date && c.date < t).sort((a, b) => concertKey(b).localeCompare(concertKey(a)));
+  // Festivals erscheinen als eine Karte; ihre Tage nicht einzeln
+  const top = concerts.filter((c) => !c.festivalId && !Festival.isFestival(c));
+  for (const f of concerts.filter(Festival.isFestival)) {
+    const ds = Festival.daysOf(f, concerts);
+    const next = ds.find((d) => d.date && d.date >= t);
+    top.push({ ...f, _days: ds, date: (next || ds[ds.length - 1])?.date || '', time: next?.time || '' });
+  }
+  const upcoming = top.filter((c) => c.date && c.date >= t).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
+  const undated = top.filter((c) => !c.date);
+  const past = top.filter((c) => c.date && c.date < t).sort((a, b) => concertKey(b).localeCompare(concertKey(a)));
 
   const card = (c, i, isPast) => {
+    if (c._days) return Festival.card(c, c._days, bandMap, docMap, isPast);
     const missing = c.lineup.filter((e) => !e.docIds.some((id) => docMap.has(id))).length;
     const outdated = c.lineup.some((e) => e.docIds.some((id) => docMap.get(id)?.archived));
     const rel = relDay(c.date);
@@ -486,7 +494,7 @@ async function viewConcerts() {
   };
 
   app().innerHTML = `
-    <div class="page-head"><h1>Konzerte</h1><button class="primary" data-new>+ Neues Konzert</button></div>
+    <div class="page-head"><h1>Konzerte</h1><div class="head-actions"><button class="ghost" data-newfest>🎪 + Festival</button><button class="primary" data-new>+ Neues Konzert</button></div></div>
     ${!concerts.length ? `
       <div class="empty">
         <div class="empty-icon">🎤</div>
@@ -500,6 +508,7 @@ async function viewConcerts() {
       <p class="muted small">Vergangene Konzerte bleiben mit den damals gültigen Ridern und Patchlisten erhalten.</p>
       <div class="list">${past.map((c, i) => card(c, i, true)).join('')}</div></details>` : ''}`;
   $('[data-new]').onclick = () => concertDialog();
+  $('[data-newfest]').onclick = () => Festival.createDialog();
   const pb = $('.past-box');
   if (pb) pb.ontoggle = () => (pb.open ? sessionStorage.setItem('pastOpen', '1') : sessionStorage.removeItem('pastOpen'));
 }
@@ -551,10 +560,18 @@ function materialHtml(c, bandMap, docs) {
     </details>`;
 }
 
-async function viewConcert(id) {
+async function viewConcert(id, sub) {
   setTab('concerts');
-  const c = await DB.get('concerts', id);
+  let c = await DB.get('concerts', id);
   if (!c) { app().innerHTML = '<p>Konzert nicht gefunden. <a href="#/concerts">Zurück</a></p>'; return; }
+  // Festivaltag direkt aufgerufen → innerhalb des Festivals anzeigen
+  if (c.festivalId) { location.replace(`#/concert/${c.festivalId}/${c.id}`); return; }
+  let fest = null;
+  if (Festival.isFestival(c)) {
+    fest = await Festival.prepare(c, sub);
+    if (!fest.day) { await Festival.overview(fest); return; }
+    c = fest.day;
+  }
   const [bands, docs, profiles] = await Promise.all([Data.bands(), Data.docs(), DB.all('profiles')]);
   profiles.sort(byName);
   const bandMap = new Map(bands.map((b) => [b.id, b]));
@@ -591,20 +608,20 @@ async function viewConcert(id) {
   const isPast = c.date && c.date < today();
   const allPrint = PatchUI.concertSheets(c, profiles, bands, docs);
   app().innerHTML = `
-    <a class="back" href="#/concerts">‹ Konzerte</a>
+    ${fest ? Festival.head(fest) + Festival.dayHead(fest) : `    <a class="back" href="#/concerts">‹ Konzerte</a>
     <div class="page-head">
       <div><h1>${esc(c.title)}</h1>
         <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}
           ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}</div></div>
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
-    </div>
+    </div>`}
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
     <div class="concert-tools card">
-      ${profiles.length ? `<label class="lbl">🎛 Stagebox für dieses Konzert
+      ${profiles.length ? `<label class="lbl">🎛 Stagebox für ${fest ? 'diesen Tag' : 'dieses Konzert'}
         <select data-cprofile><option value="">– wählen –</option>${profiles.map((p) => `<option value="${p.id}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>`
         : '<p class="small muted">Lege unter „Stagebox“ ein Profil an, um Patchlisten zu erzeugen.</p>'}
-      ${profiles.length && c.lineup.length ? `<div class="printall-wrap"><button class="primary" data-printall ${allPrint.count ? '' : 'disabled'}>🖨 Alle Patchlisten drucken</button>
-        <span class="small muted">${allPrint.count ? `${allPrint.count} Band${allPrint.count > 1 ? 's' : ''} · Stagebox „${esc(allPrint.profile.name)}“${c.profileId ? '' : ' (Vorauswahl)'}${(c.schedule || []).length ? ' · mit Tagesablauf' : ''}` : 'Keine Band hat eine Inputliste'}${allPrint.missing.length ? `<br><span class="warn-text">ohne Inputliste: ${allPrint.missing.map(esc).join(', ')}</span>` : ''}</span></div>` : ''}
+      ${(profiles.length && c.lineup.length) || (c.schedule || []).length ? `<div class="printall-wrap"><button class="primary" data-printall ${allPrint.html ? '' : 'disabled'}>🖨 ${fest ? 'Diesen Tag drucken' : 'Alle Patchlisten drucken'}</button>
+        <span class="small muted">${allPrint.count ? `${allPrint.count} Patchliste${allPrint.count > 1 ? 'n' : ''} · Stagebox „${esc(allPrint.profile.name)}“${c.profileId ? '' : ' (Vorauswahl)'}${(c.schedule || []).length ? ' · mit Tagesablauf' : ''}` : (c.schedule || []).length ? 'Tagesablauf (noch keine Inputlisten)' : 'Keine Band hat eine Inputliste'}${allPrint.missing.length ? `<br><span class="warn-text">ohne Inputliste: ${allPrint.missing.map(esc).join(', ')}</span>` : ''}</span></div>` : ''}
     </div>
     ${Schedule.html(c, bandMap)}
     ${materialHtml(c, bandMap, docs)}
@@ -622,8 +639,10 @@ async function viewConcert(id) {
   const pa = $('[data-printall]');
   if (pa) pa.onclick = () => printPages(allPrint.html);
   Schedule.bind(c, bandMap, docs);
-  $('[data-editc]').onclick = () => concertDialog(c);
-  $('[data-delc]').onclick = async () => {
+  if (fest) Festival.bindHead(fest);
+  $('[data-editc]').onclick = () => (fest ? Festival.dayDialog(fest.f, c) : concertDialog(c));
+  const delc = $('[data-delc]');
+  if (delc) delc.onclick = async () => {
     if (await confirmDialog(`Konzert „${esc(c.title)}“ löschen? Die Rider bleiben bei den Bands gespeichert.`, 'Löschen', true)) {
       await DB.del('concerts', c.id);
       location.hash = '#/concerts';
@@ -1019,7 +1038,7 @@ async function render() {
   const scroll = window.scrollY;
   const sameView = render.last === location.hash;
   render.last = location.hash;
-  const views = { concerts: viewConcerts, concert: () => viewConcert(id), bands: viewBands, band: () => viewBand(id, sub, arg, arg2), search: viewSearch, more: viewMore,
+  const views = { concerts: viewConcerts, concert: () => viewConcert(id, sub), bands: viewBands, band: () => viewBand(id, sub, arg, arg2), search: viewSearch, more: viewMore,
     stagebox: () => (id ? PatchUI.viewProfile(id) : PatchUI.viewStagebox()) };
   await (views[view] || viewConcerts)();
   if (seq === renderSeq) window.scrollTo(0, sameView ? scroll : 0);

@@ -408,7 +408,8 @@ const Smart = (() => {
       for (const f of files) { pr.update(`Lese ${f.name} …`); infos.push({ ...(await analyzeBlob(f, f.name, f.type)), file: f }); }
     } finally { pr.close(); }
 
-    const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
+    const [bands, docs, allConcerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
+    const concerts = allConcerts.filter((c) => c.kind !== 'festival');
     const bandByName = (n) => bands.find((b) => norm(b.name) === norm(n)) || null;
     const t0 = today();
     const upcoming = concerts.filter((c) => (c.date || '9999') >= t0).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));

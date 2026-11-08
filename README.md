@@ -37,6 +37,13 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 - **Alle Patchlisten drucken:** eine Seite pro Band, mit Spielzeit – der Tagesablauf kommt als erste Seite dazu.
 - **Material-Bedarf:** wie viele Mikros (nach Modell), DIs, Stative, Funkstrecken und 48V-Kanäle die größte Band braucht.
 
+### Festivals
+- „🎪 + Festival“: Name, Ort, erster Tag, Anzahl Tage und optional Bühnen (dann ein Bereich pro Tag und Bühne).
+- In der Konzertliste eine Karte mit Zeitraum, Anzahl Tagen und allen Bands.
+- Beim Öffnen: **Übersicht** (Stagebox fürs ganze Festival, alle Tage, alle Bands mit Tag und Spielzeit) und ein **Bereich pro Tag** mit eigenem Line-up, Tagesablauf, Material und Patchlisten – am Festivaltag öffnet sich direkt der heutige Tag.
+- **Drucken pro Tag** (Ablauf + Patchlisten dieses Tages), nur den Ablauf eines Tages, das **ganze Festival** oder **alle Abläufe**.
+- Tage/Bühnen lassen sich hinzufügen, umbenennen, verschieben und löschen. Rider-Import und Bandseiten zeigen die Tage als „Festival – Tag 2“.
+
 ### Konzerte & Bands
 - Konzerte mit Datum, Ort, Notizen und Line-up (Reihenfolge, Spielzeiten).
 - Wird eine bekannte Band zu einem Konzert hinzugefügt, fragt die App, ob die vorhandenen Rider noch aktuell sind, und ordnet sie direkt zu.
@@ -76,4 +83,4 @@ Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch ausw
 
 ## Technik
 - Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
-- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `schedule.js` – Tagesablauf · `app.js` – Oberfläche.
+- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `schedule.js` – Tagesablauf · `festival.js` – Festivals · `app.js` – Oberfläche.

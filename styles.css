@@ -483,3 +483,19 @@ td.ph { text-align: center; }
 }
 
 .printall-wrap { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+
+/* Festivals */
+.badge.fest { color: #e3c6ff; background: rgba(170, 110, 255, .14); border-color: rgba(170, 110, 255, .45); }
+.page-head .badge.fest { margin: 0 0 6px; }
+.fest-card { border-left: 3px solid #a86eff; }
+.fest-box { background: rgba(170, 110, 255, .16); }
+.day-tabs a { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.2; }
+.day-tabs a small { font-size: .72rem; font-weight: 500; color: var(--muted); }
+.day-tabs a.active small { color: var(--accent); }
+.day-tabs .add-day { color: var(--muted); border-bottom-style: dashed; }
+.day-head { margin-top: 14px; }
+.day-head h2 { margin: 0; font-size: 1.3rem; }
+.fest-day { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fest-day-main { display: flex; gap: 14px; align-items: center; flex: 1; min-width: 240px; color: var(--text); }
+.fest-day-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.printall-wrap .small-btn { align-self: flex-start; }

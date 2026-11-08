@@ -205,7 +205,8 @@ const PatchUI = (() => {
   /** Druckseiten für ein ganzes Konzert vorbereiten (Tagesablauf + eine Patchliste pro Band). */
   function concertSheets(c, profiles, bands, docs) {
     const profile = profiles.find((p) => p.id === c.profileId) || profiles.find((p) => p.id === localStorage.getItem('patch.lastProfile')) || profiles[0];
-    if (!profile) return { html: '', count: 0, missing: [], profile: null };
+    const sched = (c.schedule || []).length ? Schedule.sheet(c, new Map(bands.map((x) => [x.id, x]))) : '';
+    if (!profile) return { html: sched, count: 0, missing: [], profile: null };
     const sheets = [], missing = [];
     for (const e of c.lineup) {
       const b = bands.find((x) => x.id === e.bandId);
@@ -216,7 +217,7 @@ const PatchUI = (() => {
       sheets.push(printSheet(b, profile, inp, Patch.generate(inp.rows, profile, b.patchOverrides?.[profile.id] || {}), c, e));
     }
     const count = sheets.length;
-    if (count && (c.schedule || []).length) sheets.unshift(Schedule.sheet(c, new Map(bands.map((x) => [x.id, x])))); // Tagesablauf als erste Seite
+    if (sched) sheets.unshift(sched); // Tagesablauf als erste Seite
     return { html: sheets.join(''), count, missing, profile };
   }
 
