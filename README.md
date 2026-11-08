@@ -58,6 +58,7 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 ### Cloud & Offline
 - Sync über **Supabase** (kostenlos): Daten und Dateien sind auf Handy, Laptop und Tablet gleich.
 - Die App arbeitet immer mit einer lokalen Kopie – funktioniert also auch ohne Netz in der Venue. Änderungen werden übertragen, sobald wieder Verbindung besteht.
+- **Team:** Bands, Rider/Unterlagen und Stagebox-Profile sind für alle im Team gemeinsam. Konzerte und Festivals legt man **nur für sich**, fürs **ganze Team** oder für **ausgewählte Personen** an („Sichtbar für“ beim Anlegen/Bearbeiten).
 - Zusätzlich Backup als Datei (inkl. aller Rider).
 - Installierbar als App („Zum Home-Bildschirm hinzufügen“).
 
@@ -70,9 +71,20 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 5. Weitere Geräte: In der App „Link für weiteres Gerät“ öffnen und dort anmelden.
    Alternativ URL und Key in [`config.js`](config.js) eintragen, dann ist jedes Gerät automatisch verbunden.
 
+## Kolleg:innen ins Team holen
+
+1. In der App unter **Cloud → Team** die E-Mail-Adresse eintragen und **Hinzufügen**.
+2. Den **Link für weiteres Gerät** schicken. Damit **Neues Konto anlegen** – mit genau dieser E-Mail.
+3. Fertig: Bands und Rider sind sofort da. Konzerte sehen sie, sobald sie mit ihnen (oder dem ganzen Team) geteilt sind.
+
+Wer ein Konto hat, aber nicht in der Team-Liste steht, sieht nichts. Die erste Person, die sich anmeldet, kommt automatisch ins Team.
+
+**Update von einer älteren Version** (vorher hatte jede:r nur eigene Daten): [`supabase/schema.sql`](supabase/schema.sql) einfach noch einmal im SQL Editor ausführen. Alle bestehenden Konten kommen dabei ins Team; bisherige Konzerte bleiben privat, bis du sie teilst.
+
 **Tipps**
 - Wenn Supabase eine Bestätigungs-Mail schickt: Link anklicken, dann in der App anmelden.
-- Nachdem dein Konto angelegt ist, unter *Authentication → Sign In / Providers* „Allow new users to sign up“ ausschalten. Dann kann niemand sonst dein Projekt nutzen (die Daten sind ohnehin pro Konto geschützt).
+- Wenn alle Kolleg:innen ihr Konto angelegt haben, kannst du unter *Authentication → Sign In / Providers* „Allow new users to sign up“ ausschalten. Nötig ist das nicht: Fremde Konten sehen ohne Team-Eintrag nichts.
+- Meldet sich auf einem Gerät ein anderes Konto an als vorher, werden die lokalen Daten auf dem Gerät gelöscht (in der Cloud bleibt alles), damit nichts ins falsche Konto wandert.
 - Der anon-Key ist dafür gedacht, öffentlich zu sein. Geschützt wird über Login und Row Level Security.
 
 ## Starten
@@ -88,4 +100,4 @@ Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch ausw
 
 ## Technik
 - Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
-- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `schedule.js` – Tagesablauf · `festival.js` – Festivals · `app.js` – Oberfläche.
+- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `schedule.js` – Tagesablauf · `festival.js` – Festivals · `team.js` – Team & Teilen · `app.js` – Oberfläche.

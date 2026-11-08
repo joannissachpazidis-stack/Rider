@@ -56,6 +56,7 @@ const Festival = (() => {
       <form class="form" novalidate>
         <label>Name <input name="title" required placeholder="z. B. Rock am See 2027" autofocus></label>
         <label>Ort <input name="venue" placeholder="Gelände, Stadt"></label>
+        ${Share.picker()}
         <div class="row2">
           <label>Erster Tag <input type="date" name="date" value="${today()}"></label>
           <label>Anzahl Tage <input type="number" name="n" min="1" max="14" value="3"></label>
@@ -70,16 +71,18 @@ const Festival = (() => {
         <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">Anlegen</button></div>
       </form>`, (el, done) => {
       const f = $('form', el);
+      Share.bindPicker(el);
       f.onsubmit = (e) => {
         e.preventDefault();
         const title = f.elements.namedItem('title').value.trim();
         if (!title) { const er = $('.error', el); er.textContent = 'Bitte einen Namen angeben.'; er.hidden = false; return; }
         done({ title, venue: f.venue.value.trim(), date: f.date.value || today(), n: Math.min(14, Math.max(1, +f.n.value || 1)),
-          stages: f.stages.value.split(',').map((s) => s.trim()).filter(Boolean), bands: f.bands.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean), notes: f.notes.value.trim() });
+          stages: f.stages.value.split(',').map((s) => s.trim()).filter(Boolean), bands: f.bands.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean), notes: f.notes.value.trim(), sharedWith: Share.read(el) ?? Share.defaults() });
       };
     });
     if (!res) return;
-    const fest = { id: uid(), kind: 'festival', title: res.title, venue: res.venue, notes: res.notes, stages: res.stages, lineup: [], createdAt: nowIso() };
+    const fest = { id: uid(), kind: 'festival', title: res.title, venue: res.venue, notes: res.notes, stages: res.stages, sharedWith: res.sharedWith, lineup: [], createdAt: nowIso() };
+    Share.remember(res.sharedWith);
     for (const name of res.bands) {
       const { band } = await Data.findOrCreateBand(name);
       if (!fest.lineup.some((e) => e.bandId === band.id)) fest.lineup.push({ bandId: band.id, time: '', docIds: [], unplaced: true });
@@ -98,16 +101,25 @@ const Festival = (() => {
       <form class="form">
         <label>Name <input name="title" required value="${esc(f.title)}"></label>
         <label>Ort <input name="venue" value="${esc(f.venue || '')}"></label>
+        ${Share.picker(f)}
         <label>Notizen <textarea name="notes" rows="3">${esc(f.notes || '')}</textarea></label>
         <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">Speichern</button></div>
       </form>`, (el, done) => {
       const fm = $('form', el);
-      fm.onsubmit = (e) => { e.preventDefault(); done({ title: fm.elements.namedItem('title').value.trim() || f.title, venue: fm.venue.value.trim(), notes: fm.notes.value.trim() }); };
+      Share.bindPicker(el);
+      fm.onsubmit = (e) => {
+        e.preventDefault();
+        const share = Share.read(el);
+        done({ title: fm.elements.namedItem('title').value.trim() || f.title, venue: fm.venue.value.trim(), notes: fm.notes.value.trim(), ...(share ? { sharedWith: share } : {}) });
+      };
     });
     if (!res) return;
+    const shareChanged = res.sharedWith && JSON.stringify(res.sharedWith) !== JSON.stringify(f.sharedWith || []);
     Object.assign(f, res);
     await DB.put('concerts', f);
     await syncDays(f);
+    // Tage übernehmen die Freigabe des Festivals → neu hochladen
+    if (shareChanged) for (const d of daysOf(f, await Data.concerts())) await DB.put('concerts', d);
     render();
   }
 
@@ -266,7 +278,7 @@ const Festival = (() => {
     return `
       <a class="back no-print" href="#/concerts">‹ Konzerte</a>
       <div class="page-head">
-        <div><span class="badge fest">🎪 Festival</span><h1>${esc(f.title)}</h1>
+        <div><span class="badge fest">🎪 Festival</span>${Share.badge(f)}<h1>${esc(f.title)}</h1>
           <div class="muted">${[range(days), countLabel(days), f.venue && esc(f.venue)].filter(Boolean).join(' · ')}</div></div>
         <div class="head-actions"><button class="ghost" data-fedit>Bearbeiten</button><button class="ghost danger-text" data-fdel>Löschen</button></div>
       </div>
@@ -425,7 +437,7 @@ const Festival = (() => {
     <a class="card concert-card fest-card ${isPast ? 'past' : ''}" href="#/concert/${f.id}">
       <div class="date-box fest-box">${shown?.date ? `<span>${fmtWeekday(shown.date)}</span><b>${toDate(shown.date).getDate()}</b><span>${toDate(shown.date).toLocaleDateString('de-DE', { month: 'short' })}</span>` : '<b>?</b>'}</div>
       <div class="grow">
-        <div class="card-top"><span class="badge fest">🎪 Festival · ${countLabel(days)}</span>${ongoing ? '<span class="badge accent">läuft</span>' : rel && !isPast ? `<span class="badge">${rel}</span>` : ''}${f.lineup?.length ? `<span class="badge warn">${f.lineup.length} ohne Tag</span>` : ''}</div>
+        <div class="card-top"><span class="badge fest">🎪 Festival · ${countLabel(days)}</span>${ongoing ? '<span class="badge accent">läuft</span>' : rel && !isPast ? `<span class="badge">${rel}</span>` : ''}${f.lineup?.length ? `<span class="badge warn">${f.lineup.length} ohne Tag</span>` : ''}${Share.badge(f)}</div>
         <div class="card-title">${esc(f.title)}</div>
         <div class="muted small">${[range(days), f.venue && esc(f.venue)].filter(Boolean).join(' · ')}</div>
         <div class="band-chips">${bandsAll.slice(0, 14).map((x) => `<span class="bchip ${x.ok ? 'ok' : 'missing'}">${esc(bandMap.get(x.id)?.name || '?')}</span>`).join('')}${bandsAll.length > 14 ? `<span class="muted small">+${bandsAll.length - 14} weitere</span>` : ''}${!bandsAll.length ? '<span class="muted small">noch keine Bands</span>' : ''}</div>
