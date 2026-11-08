@@ -218,6 +218,7 @@ const PatchUI = (() => {
     }
     if (!sheets.length) { toast('Für keine Band gibt es eine Inputliste'); return; }
     if (missing.length && !(await confirmDialog(`Ohne Inputliste (wird übersprungen): <b>${missing.map(esc).join(', ')}</b>. Trotzdem drucken?`, 'Drucken'))) return;
+    if ((c.schedule || []).length) sheets.unshift(Schedule.sheet(c, new Map(bands.map((x) => [x.id, x])))); // Tagesablauf als erste Seite
     let root = $('#print-root');
     if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
     root.innerHTML = sheets.join('');

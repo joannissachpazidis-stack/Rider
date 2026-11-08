@@ -475,7 +475,7 @@ async function viewConcerts() {
       <div class="grow">
         <div class="card-top">${next ? '<span class="badge accent">Als Nächstes</span>' : ''}${rel && !isPast ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}</div>
         <div class="card-title">${esc(c.title)}</div>
-        <div class="muted small">${[c.time && c.time + ' Uhr', c.venue && esc(c.venue), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
+        <div class="muted small">${[c.time && c.time + ' Uhr', c.venue && esc(c.venue), !isPast && Schedule.summary(c), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
         <div class="band-chips">${c.lineup.map((e) => {
           const ok = e.docIds.some((id) => docMap.has(id));
           return `<span class="bchip ${ok ? 'ok' : 'missing'}" title="${ok ? 'Rider vorhanden' : 'noch kein Rider'}">${esc(bandMap.get(e.bandId)?.name || '?')}</span>`;
@@ -604,6 +604,7 @@ async function viewConcert(id) {
         : '<p class="small muted">Lege unter „Stagebox“ ein Profil an, um Patchlisten zu erzeugen.</p>'}
       ${profiles.length && c.lineup.length ? `<button class="primary" data-printall ${c.profileId ? '' : 'disabled title="Erst eine Stagebox wählen"'}>🖨 Alle Patchlisten drucken</button>` : ''}
     </div>
+    ${Schedule.html(c, bandMap)}
     ${materialHtml(c, bandMap, docs)}
     <h3 class="section">Line-up</h3>
     <div class="list">${c.lineup.map(entryHtml).join('') || '<p class="muted">Noch keine Bands.</p>'}</div>
@@ -618,6 +619,7 @@ async function viewConcert(id) {
   if (cp) cp.onchange = () => { c.profileId = cp.value || null; save(); };
   const pa = $('[data-printall]');
   if (pa) pa.onclick = () => PatchUI.printConcert(c);
+  Schedule.bind(c, bandMap, docs);
   $('[data-editc]').onclick = () => concertDialog(c);
   $('[data-delc]').onclick = async () => {
     if (await confirmDialog(`Konzert „${esc(c.title)}“ löschen? Die Rider bleiben bei den Bands gespeichert.`, 'Löschen', true)) {
@@ -625,7 +627,13 @@ async function viewConcert(id) {
       location.hash = '#/concerts';
     }
   };
-  $$('[data-time]').forEach((inp) => (inp.onchange = () => { c.lineup[+inp.dataset.time].time = inp.value; DB.put('concerts', c); }));
+  $$('[data-time]').forEach((inp) => (inp.onchange = () => {
+    const e = c.lineup[+inp.dataset.time];
+    e.time = inp.value;
+    const show = (c.schedule || []).find((x) => x.type === 'show' && x.bandId === e.bandId);
+    if (show && inp.value) show.time = inp.value;
+    save();
+  }));
   $$('[data-up]').forEach((b) => (b.onclick = () => { const i = +b.dataset.up; [c.lineup[i - 1], c.lineup[i]] = [c.lineup[i], c.lineup[i - 1]]; save(); }));
   $$('[data-down]').forEach((b) => (b.onclick = () => { const i = +b.dataset.down; [c.lineup[i + 1], c.lineup[i]] = [c.lineup[i], c.lineup[i + 1]]; save(); }));
   $$('[data-rmband]').forEach((b) => (b.onclick = async () => {

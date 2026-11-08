@@ -33,7 +33,8 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 
 ### Konzerte
 - Anstehende Konzerte nach Datum und Uhrzeit (das nächste oben, mit „Heute“, „Morgen“, „in 5 Tagen“), Konzerte ohne Datum separat, vergangene eingeklappt. Vergangene Konzerte bleiben mit den damals gültigen Ridern erhalten.
-- **Alle Patchlisten drucken:** eine Seite pro Band, mit Spielzeit.
+- **Tagesablauf:** Get-in, Aufbau, Line-Check, Soundchecks, Catering, Einlass, Shows, Umbauten, Curfew, Abbau und eigene Einträge – mit Band und Notiz. „Ablauf erstellen“ macht einen Vorschlag aus dem Line-up (Soundchecks in umgekehrter Reihenfolge, Soundcheck- und Umbauzeiten aus den Ridern). Bei Verzug „Verschieben“ (alles ab einem Eintrag um X Minuten, Curfew bleibt fest), am Konzerttag ist der aktuelle Punkt markiert, Überschneidungen werden angezeigt. Drucken oder als Text kopieren (z. B. für WhatsApp). Showzeiten und Spielzeiten im Line-up bleiben synchron.
+- **Alle Patchlisten drucken:** eine Seite pro Band, mit Spielzeit – der Tagesablauf kommt als erste Seite dazu.
 - **Material-Bedarf:** wie viele Mikros (nach Modell), DIs, Stative, Funkstrecken und 48V-Kanäle die größte Band braucht.
 
 ### Konzerte & Bands
@@ -75,4 +76,4 @@ Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch ausw
 
 ## Technik
 - Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
-- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `app.js` – Oberfläche.
+- `db.js` – lokale Datenbank (IndexedDB) · `cloud.js` – Supabase-Sync · `smart.js` – Erkennung & Import · `patch.js` – Inputliste, Mix-Infos & Patch-Logik · `patch-ui.js` – Patch & Stagebox-Oberfläche · `schedule.js` – Tagesablauf · `app.js` – Oberfläche.

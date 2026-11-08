@@ -448,3 +448,36 @@ td.ph { text-align: center; }
   .ps-table td.ps-phantom { font-weight: 800; text-align: center; }
   .ps-table th.ps-phantom { text-align: center; }
 }
+
+/* Tagesablauf */
+.schedule { margin: 12px 0; }
+.schedule .page-head { margin: 0 0 8px; }
+.schedule h3 { margin: 0; }
+.sched-list { list-style: none; margin: 0; padding: 0; position: relative; }
+.sched-list::before { content: ''; position: absolute; left: 87px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+.sched-item { display: grid; grid-template-columns: 70px 36px 1fr; gap: 0 4px; align-items: start; padding: 7px 6px; border-radius: 10px; cursor: pointer; position: relative; }
+.sched-item:hover { background: var(--panel2); }
+.sched-time { text-align: right; font-variant-numeric: tabular-nums; padding-top: 2px; }
+.sched-time b { display: block; }
+.sched-time span { font-size: .78rem; color: var(--muted); }
+.sched-dot { width: 30px; height: 30px; border-radius: 50%; background: var(--panel2); border: 2px solid var(--line); display: grid; place-items: center; font-size: .9rem; position: relative; z-index: 1; margin-left: 2px; }
+.sched-body { padding-top: 3px; min-width: 0; }
+.sched-band { color: var(--accent); font-weight: 600; }
+.sched-item.t-show .sched-dot { border-color: var(--accent); background: rgba(255, 159, 67, .15); }
+.sched-item.t-show .sched-body > div:first-child b { color: var(--accent); }
+.sched-item.t-soundcheck .sched-dot { border-color: #8fb3ff; }
+.sched-item.t-doors .sched-dot, .sched-item.t-curfew .sched-dot { border-color: var(--warn); }
+.sched-item.now { background: rgba(255, 159, 67, .1); outline: 1px solid rgba(255, 159, 67, .5); }
+.sched-item.done { opacity: .5; }
+.quick-dur { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--muted); }
+.quick-dur .small-btn { min-height: 30px; padding: 4px 9px; }
+@media (max-width: 560px) {
+  .sched-list::before { left: 73px; }
+  .sched-item { grid-template-columns: 56px 36px 1fr; }
+  .schedule .head-actions { flex-wrap: wrap; }
+}
+@media print {
+  .ps-table .ps-time { width: 34mm; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sched-sheet .ps-table { font-size: 13pt; }
+  .sched-sheet .ps-show td { font-weight: 800; border-top: 2px solid #000; }
+}
