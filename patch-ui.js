@@ -208,7 +208,7 @@ const PatchUI = (() => {
     const sched = (c.schedule || []).length ? Schedule.sheet(c, new Map(bands.map((x) => [x.id, x]))) : '';
     if (!profile) return { html: sched, count: 0, missing: [], profile: null };
     const sheets = [], missing = [];
-    for (const e of c.lineup) {
+    for (const e of orderedLineup(c)) {
       const b = bands.find((x) => x.id === e.bandId);
       if (!b) continue;
       const bd = docs.filter((d) => d.bandId === b.id);

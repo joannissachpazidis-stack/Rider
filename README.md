@@ -44,6 +44,11 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 - **Drucken pro Tag** (Ablauf + Patchlisten dieses Tages), nur den Ablauf eines Tages, das **ganze Festival** oder **alle Abläufe**.
 - Tage/Bühnen lassen sich hinzufügen, umbenennen, verschieben und löschen. Rider-Import und Bandseiten zeigen die Tage als „Festival – Tag 2“.
 
+### Bands ohne Tag & Running Order
+- **Festivals:** Bands können zuerst nur dem Festival hinzugefügt werden („Bands ohne Tag“) – auch schon beim Anlegen. Später „Einteilen in …“ einen Tag/eine Bühne; im Tag lassen sie sich per „↔ Verschieben“ auf einen anderen Tag, eine andere Bühne oder zurück zu „ohne Tag“ legen. Rider können schon vorher abgelegt werden.
+- **Tage & Bühnen:** gezählt und angezeigt als „3 Tage · 2 Bühnen“; ein Tab pro Tag, darin Umschalter für die Bühnen. „＋ Bühne“ fügt eine Bühne an einem oder allen Tagen hinzu; „Tag drucken“ druckt alle Bühnen des Tages, „nur Hauptbühne“ einzeln.
+- **Reihenfolge (alle Konzerte):** Neue Bands landen unter „Reihenfolge offen“. „↥ Einreihen“ setzt sie in die Running Order (oder automatisch, sobald eine Spielzeit eingetragen wird), ↑↓ ändert die Reihenfolge, „↧“ macht sie wieder offen. Der Ablauf-Vorschlag hängt Bands ohne Reihenfolge hinten an.
+
 ### Konzerte & Bands
 - Konzerte mit Datum, Ort, Notizen und Line-up (Reihenfolge, Spielzeiten).
 - Wird eine bekannte Band zu einem Konzert hinzugefügt, fragt die App, ob die vorhandenen Rider noch aktuell sind, und ordnet sie direkt zu.

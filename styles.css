@@ -499,3 +499,24 @@ td.ph { text-align: center; }
 .fest-day-main { display: flex; gap: 14px; align-items: center; flex: 1; min-width: 240px; color: var(--text); }
 .fest-day-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .printall-wrap .small-btn { align-self: flex-start; }
+
+/* Running Order */
+.pos { min-width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; display: grid; place-items: center; font-size: .85rem; flex: none; }
+.open-list .lineup { border-style: dashed; }
+.move-sel { width: auto; min-height: 34px; padding: 5px 8px; font-size: .88rem; }
+/* Festival: Bühnen & Bands ohne Tag */
+.stage-pills { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.stage-pills a { display: flex; flex-direction: column; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-weight: 600; font-size: .9rem; line-height: 1.2; }
+.stage-pills a small { font-weight: 500; color: var(--muted); font-size: .72rem; }
+.stage-pills a.active { border-color: var(--accent); background: rgba(255, 159, 67, .12); color: var(--accent); }
+.pool { margin: 12px 0; }
+.pool .page-head { margin: 0 0 4px; }
+.pool h3 { margin: 0; }
+.pool-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.pool-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); border-radius: 10px; flex-wrap: wrap; }
+.pool-row select { width: auto; min-height: 34px; padding: 4px 8px; font-size: .88rem; }
+.pool-add { margin-top: 8px; box-shadow: none; padding: 0; border: none; background: none; }
+.fest-day { flex-direction: column; align-items: stretch; }
+.fest-day-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fest-stage { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.fest-stage-name { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--text); flex-wrap: wrap; }

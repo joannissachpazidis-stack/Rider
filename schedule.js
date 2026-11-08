@@ -168,7 +168,8 @@ const Schedule = (() => {
   /* ---------- Vorschlag erzeugen ---------- */
   async function generateDialog(c, bandMap, docs) {
     if (!c.lineup.length) { toast('Erst Bands ins Line-up eintragen'); return; }
-    const per = c.lineup.map((e) => ({ e, b: bandMap.get(e.bandId), t: riderTimes(docs.filter((d) => d.bandId === e.bandId)) }));
+    const per = orderedLineup(c).map((e) => ({ e, b: bandMap.get(e.bandId), t: riderTimes(docs.filter((d) => d.bandId === e.bandId)) }));
+    const openOnes = c.lineup.length > 1 ? c.lineup.filter((e) => e.unplaced).map((e) => bandMap.get(e.bandId)?.name) : [];
     const show = toMin(c.time) ?? toMin(c.lineup.find((e) => e.time)?.time) ?? 20 * 60;
     const fromRider = per.filter((x) => x.t.soundcheck);
     const res = await modal(`
@@ -183,6 +184,7 @@ const Schedule = (() => {
           <label>Soundcheck je Band (min) <input type="number" name="sc" min="5" step="5" value="45"></label>
           <label>Pause dazwischen (min) <input type="number" name="gap" min="0" step="5" value="10"></label>
         </div>
+        ${openOnes.length ? `<p class="small hint">Reihenfolge noch offen: ${openOnes.map(esc).join(', ')} – diese Bands werden hinten angehängt. Du kannst sie danach im Ablauf verschieben.</p>` : ''}
         ${fromRider.length ? `<p class="small hint">Aus den Ridern übernommen: ${fromRider.map((x) => `${esc(x.b?.name)} ${x.t.soundcheck} min`).join(', ')}</p>` : ''}
         <label>Soundcheck-Reihenfolge <select name="order"><option value="reverse">Umgekehrt (letzte Band zuerst) – üblich</option><option value="lineup">Wie im Line-up</option></select></label>
         <div class="row2">
@@ -225,7 +227,8 @@ const Schedule = (() => {
     let cur = res.show;
     per.forEach((x, i) => {
       const fixed = res.keep && toMin(x.e.time) !== null ? toMin(x.e.time) : null;
-      const start = fixed ?? cur;
+      // Feste Spielzeit nur übernehmen, wenn sie zur Reihenfolge passt (sonst würde sie sich überschneiden)
+      const start = fixed !== null && (i === 0 || fixed >= cur) ? fixed : cur;
       const nextFixed = res.keep && per[i + 1] && toMin(per[i + 1].e.time) !== null ? toMin(per[i + 1].e.time) : null;
       const end = nextFixed !== null && nextFixed - res.co > start ? nextFixed - res.co : start + res.set;
       add('show', start, end, x.e.bandId);

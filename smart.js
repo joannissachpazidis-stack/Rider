@@ -409,7 +409,7 @@ const Smart = (() => {
     } finally { pr.close(); }
 
     const [bands, docs, allConcerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
-    const concerts = allConcerts.filter((c) => c.kind !== 'festival');
+    const concerts = allConcerts;
     const bandByName = (n) => bands.find((b) => norm(b.name) === norm(n)) || null;
     const t0 = today();
     const upcoming = concerts.filter((c) => (c.date || '9999') >= t0).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
@@ -444,7 +444,7 @@ const Smart = (() => {
 
     const concertOptions = (sel, shared) => `
       <option value="">– kein Konzert –</option>
-      ${upcoming.length ? `<optgroup label="Anstehend">${upcoming.map((c) => `<option value="${c.id}" ${sel === c.id ? 'selected' : ''}>${c.date ? fmtDate(c.date) + ' – ' : ''}${esc(c.title)}</option>`).join('')}</optgroup>` : ''}
+      ${upcoming.length ? `<optgroup label="Anstehend">${upcoming.map((c) => `<option value="${c.id}" ${sel === c.id ? 'selected' : ''}>${c.kind === 'festival' ? '🎪 ' : c.date ? fmtDate(c.date) + ' – ' : ''}${esc(c.title)}${c.kind === 'festival' ? ' (noch ohne Tag)' : ''}</option>`).join('')}</optgroup>` : ''}
       ${past.length ? `<optgroup label="Vergangen">${past.map((c) => `<option value="${c.id}" ${sel === c.id ? 'selected' : ''}>${fmtDate(c.date)} – ${esc(c.title)}</option>`).join('')}</optgroup>` : ''}
       ${shared ? `<option value="__shared" ${sel === '__shared' ? 'selected' : ''}>→ neues Konzert (oben)</option>` : ''}
       <option value="__new" ${sel === '__new' ? 'selected' : ''}>+ Neues Konzert …</option>`;
@@ -609,7 +609,7 @@ const Smart = (() => {
       const c = await DB.get('concerts', concertId);
       if (!c) return;
       let e = c.lineup.find((x) => x.bandId === bandId);
-      if (!e) { e = { bandId, time: '', docIds: [] }; c.lineup.push(e); }
+      if (!e) { e = { bandId, time: '', docIds: [], unplaced: true }; c.lineup.push(e); }
       if (replaceId) e.docIds = e.docIds.filter((x) => x !== replaceId);
       if (!e.docIds.includes(docId)) e.docIds.push(docId);
       await DB.put('concerts', c);

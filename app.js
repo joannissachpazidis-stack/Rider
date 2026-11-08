@@ -344,7 +344,7 @@ async function concertDialog(concert = null) {
   const c = { id: uid(), ...res, lineup: [], createdAt: nowIso() };
   for (const name of chosen) {
     const { band } = await Data.findOrCreateBand(name);
-    if (!c.lineup.some((e) => e.bandId === band.id)) c.lineup.push({ bandId: band.id, time: '', docIds: [] });
+    if (!c.lineup.some((e) => e.bandId === band.id)) c.lineup.push({ bandId: band.id, time: '', docIds: [], unplaced: true });
   }
   await DB.put('concerts', c);
   location.hash = '#/concert/' + c.id;
@@ -358,7 +358,7 @@ async function addBandToConcert(concertId, name) {
   const { band, created } = await Data.findOrCreateBand(name);
   const c = await DB.get('concerts', concertId);
   if (c.lineup.some((e) => e.bandId === band.id)) { toast(`${band.name} ist schon im Line-up`); return; }
-  c.lineup.push({ bandId: band.id, time: '', docIds: [] });
+  c.lineup.push({ bandId: band.id, time: '', docIds: [], unplaced: true });
   await DB.put('concerts', c);
   await render();
   if (!created) await riderCheck(band.id, concertId);
@@ -441,6 +441,11 @@ function bindDocActions(root) {
 }
 
 /* ---------- Konzerte ---------- */
+// Running Order: eingereihte Bands in ihrer Reihenfolge, danach die ohne festgelegte Reihenfolge.
+// Eine einzelne Band gilt immer als eingereiht.
+const isPlaced = (c, e) => !e.unplaced || c.lineup.length === 1;
+const orderedLineup = (c) => [...c.lineup.filter((e) => isPlaced(c, e)), ...c.lineup.filter((e) => !isPlaced(c, e))];
+
 // Relative Angabe wie „Heute“, „Morgen“, „in 5 Tagen“
 function relDay(iso) {
   if (!iso) return '';
@@ -560,6 +565,20 @@ function materialHtml(c, bandMap, docs) {
     </details>`;
 }
 
+// Band in die Running Order setzen: ans Ende – oder, wenn sie eine Spielzeit hat, passend nach Zeit
+function placeBand(c, e, byTime = false) {
+  e.unplaced = false;
+  const rest = c.lineup.filter((x) => x !== e);
+  const placedRest = rest.filter((x) => !x.unplaced);
+  let at = placedRest.length ? rest.indexOf(placedRest[placedRest.length - 1]) + 1 : 0;
+  if (byTime && e.time) {
+    const later = placedRest.find((x) => x.time && concertKey({ date: '0', time: x.time }) > concertKey({ date: '0', time: e.time }));
+    if (later) at = rest.indexOf(later);
+  }
+  rest.splice(at, 0, e);
+  c.lineup = rest;
+}
+
 async function viewConcert(id, sub) {
   setTab('concerts');
   let c = await DB.get('concerts', id);
@@ -577,7 +596,11 @@ async function viewConcert(id, sub) {
   const bandMap = new Map(bands.map((b) => [b.id, b]));
   const docMap = new Map(docs.map((d) => [d.id, d]));
 
-  const entryHtml = (e, i) => {
+  const placed = c.lineup.filter((e) => isPlaced(c, e));
+  const open = c.lineup.filter((e) => !isPlaced(c, e));
+  const entryHtml = (e) => {
+    const i = c.lineup.indexOf(e);
+    const pos = placed.indexOf(e);
     const b = bandMap.get(e.bandId);
     const eDocs = e.docIds.map((x) => docMap.get(x)).filter(Boolean);
     const newer = docs.filter((d) => d.bandId === e.bandId && !d.archived && !e.docIds.includes(d.id));
@@ -585,11 +608,15 @@ async function viewConcert(id, sub) {
     return `
     <div class="card lineup" data-band="${e.bandId}">
       <div class="lineup-head">
+        ${pos >= 0 && c.lineup.length > 1 ? `<span class="pos" title="Position in der Running Order">${pos + 1}</span>` : ''}
         <input type="time" class="time" value="${esc(e.time)}" data-time="${i}" aria-label="Spielzeit">
         <a class="card-title grow" href="#/band/${e.bandId}">${esc(b?.name || '?')}</a>
-        <button class="icon" title="nach oben" data-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button class="icon" title="nach unten" data-down="${i}" ${i === c.lineup.length - 1 ? 'disabled' : ''}>↓</button>
-        <button class="icon" title="Band aus Konzert entfernen" data-rmband="${i}">✕</button>
+        ${pos >= 0 && c.lineup.length > 1 ? `
+          <button class="icon" title="nach oben" data-up="${i}" ${pos === 0 ? 'disabled' : ''}>↑</button>
+          <button class="icon" title="nach unten" data-down="${i}" ${pos === placed.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="icon" title="Reihenfolge wieder offen lassen" data-unplace="${i}">↧</button>`
+        : pos < 0 ? `<button class="ghost small-btn" data-place="${i}" title="Ans Ende der Running Order setzen">↥ Einreihen</button>` : ''}
+        <button class="icon" title="Band aus ${fest ? 'diesem Tag' : 'dem Konzert'} entfernen" data-rmband="${i}">✕</button>
       </div>
       ${b?.genre ? `<div class="muted small">${esc(b.genre)}</div>` : ''}
       ${eDocs.length ? `<ul class="docs">${eDocs.map((d) => docRow(d, { concertId: c.id })).join('')}</ul>`
@@ -600,6 +627,7 @@ async function viewConcert(id, sub) {
         <button class="ghost small-btn" data-upload="${e.bandId}">⬆︎ Rider ablegen</button>
         <button class="ghost small-btn" data-note="${e.bandId}">📝 Notiz</button>
         <a class="button ghost small-btn" href="#/band/${e.bandId}/patch/${c.profileId || ''}/${c.id}">🎛 Patch</a>
+        ${fest ? `<select class="move-sel" data-move="${e.bandId}" aria-label="Band verschieben"><option value="">↔ Verschieben …</option>${Festival.moveOptions(fest, c.id)}</select>` : ''}
       </div>
     </div>`;
   };
@@ -625,8 +653,10 @@ async function viewConcert(id, sub) {
     </div>
     ${Schedule.html(c, bandMap)}
     ${materialHtml(c, bandMap, docs)}
-    <h3 class="section">Line-up</h3>
-    <div class="list">${c.lineup.map(entryHtml).join('') || '<p class="muted">Noch keine Bands.</p>'}</div>
+    <h3 class="section">${c.lineup.length > 1 ? 'Running Order' : 'Line-up'}</h3>
+    <div class="list">${placed.map(entryHtml).join('') || (open.length ? '<p class="muted small">Noch keine Reihenfolge festgelegt – reihe die Bands unten ein, sobald sie feststeht (oder trag eine Spielzeit ein).</p>' : '<p class="muted">Noch keine Bands.</p>')}</div>
+    ${open.length ? `<h3 class="section">Reihenfolge offen <span class="badge">${open.length}</span></h3>
+    <div class="list open-list">${open.map(entryHtml).join('')}</div>` : ''}
     <form class="add-band card" autocomplete="off">
       <input name="band" list="dl-addband" placeholder="Band hinzufügen …">
       <datalist id="dl-addband">${bands.filter((b) => !c.lineup.some((e) => e.bandId === b.id)).sort(byName).map((b) => `<option value="${esc(b.name)}">`).join('')}</datalist>
@@ -651,12 +681,29 @@ async function viewConcert(id, sub) {
   $$('[data-time]').forEach((inp) => (inp.onchange = () => {
     const e = c.lineup[+inp.dataset.time];
     e.time = inp.value;
+    if (!isPlaced(c, e) && inp.value) placeBand(c, e, true);
     const show = (c.schedule || []).find((x) => x.type === 'show' && x.bandId === e.bandId);
     if (show && inp.value) show.time = inp.value;
     save();
   }));
-  $$('[data-up]').forEach((b) => (b.onclick = () => { const i = +b.dataset.up; [c.lineup[i - 1], c.lineup[i]] = [c.lineup[i], c.lineup[i - 1]]; save(); }));
-  $$('[data-down]').forEach((b) => (b.onclick = () => { const i = +b.dataset.down; [c.lineup[i + 1], c.lineup[i]] = [c.lineup[i], c.lineup[i + 1]]; save(); }));
+  // Nach oben/unten nur innerhalb der Running Order
+  const swap = (i, dir) => {
+    const idx = c.lineup.map((e, k) => (isPlaced(c, e) ? k : -1)).filter((k) => k >= 0);
+    const p = idx.indexOf(i), j = idx[p + dir];
+    if (j === undefined) return;
+    [c.lineup[i], c.lineup[j]] = [c.lineup[j], c.lineup[i]];
+    save();
+  };
+  $$('[data-up]').forEach((b) => (b.onclick = () => swap(+b.dataset.up, -1)));
+  $$('[data-down]').forEach((b) => (b.onclick = () => swap(+b.dataset.down, 1)));
+  $$('[data-place]').forEach((b) => (b.onclick = () => { placeBand(c, c.lineup[+b.dataset.place]); save(); }));
+  $$('[data-unplace]').forEach((b) => (b.onclick = () => {
+    const e = c.lineup[+b.dataset.unplace];
+    e.unplaced = true;
+    c.lineup = [...c.lineup.filter((x) => x !== e), e];
+    save();
+  }));
+  $$('[data-move]').forEach((s) => (s.onchange = () => s.value && Festival.moveBand(c.id, s.dataset.move, s.value)));
   $$('[data-rmband]').forEach((b) => (b.onclick = async () => {
     const e = c.lineup[+b.dataset.rmband];
     if (await confirmDialog(`${esc(bandMap.get(e.bandId)?.name)} aus diesem Konzert entfernen? (Band und Rider bleiben in der Ablage.)`, 'Entfernen', true)) {
