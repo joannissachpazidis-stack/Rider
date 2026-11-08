@@ -286,6 +286,7 @@ async function concertDialog(concert = null) {
         <label>Beginn <input type="time" name="time" value="${esc(concert?.time || '')}"></label>
       </div>
       <label>Ort / Venue <input name="venue" value="${esc(concert?.venue)}" placeholder="Club, Stadt"></label>
+      ${Share.picker(concert)}
       ${isNew ? `
       <label>Bands
         <div class="inline">
@@ -300,6 +301,7 @@ async function concertDialog(concert = null) {
       <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">${isNew ? 'Anlegen' : 'Speichern'}</button></div>
     </form>`, (el, done) => {
     const form = $('form', el);
+    Share.bindPicker(el);
     if (isNew) {
       const known = new Map(bands.map((b) => [norm(b.name), b]));
       const chips = $('.chips', el);
@@ -329,7 +331,8 @@ async function concertDialog(concert = null) {
       if (isNew && form.band.value.trim()) { const v = form.band.value.trim(); if (!chosen.some((c) => norm(c) === norm(v))) chosen.push(v); }
       const title = form.title.value.trim() || (chosen.length ? chosen.join(' / ') : '');
       if (!title) { const er = $('.error', el); er.textContent = 'Bitte einen Namen oder mindestens eine Band angeben.'; er.hidden = false; return; }
-      done({ title, date: form.date.value, time: form.time.value, venue: form.venue.value.trim(), notes: form.notes.value.trim() });
+      const share = Share.read(el);
+      done({ title, date: form.date.value, time: form.time.value, venue: form.venue.value.trim(), notes: form.notes.value.trim(), ...(share ? { sharedWith: share } : {}) });
     };
   });
   if (!res) return;
@@ -341,7 +344,8 @@ async function concertDialog(concert = null) {
     return;
   }
 
-  const c = { id: uid(), ...res, lineup: [], createdAt: nowIso() };
+  const c = { id: uid(), sharedWith: Share.defaults(), ...res, lineup: [], createdAt: nowIso() };
+  Share.remember(c.sharedWith);
   for (const name of chosen) {
     const { band } = await Data.findOrCreateBand(name);
     if (!c.lineup.some((e) => e.bandId === band.id)) c.lineup.push({ bandId: band.id, time: '', docIds: [], unplaced: true });
@@ -486,7 +490,7 @@ async function viewConcerts() {
     <a class="card concert-card ${next ? 'next' : ''} ${isPast ? 'past' : ''}" href="#/concert/${c.id}">
       <div class="date-box">${c.date ? `<span>${fmtWeekday(c.date)}</span><b>${toDate(c.date).getDate()}</b><span>${toDate(c.date).toLocaleDateString('de-DE', { month: 'short' })}</span>` : '<b>?</b>'}</div>
       <div class="grow">
-        <div class="card-top">${next ? '<span class="badge accent">Als Nächstes</span>' : ''}${rel && !isPast ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}</div>
+        <div class="card-top">${next ? '<span class="badge accent">Als Nächstes</span>' : ''}${rel && !isPast ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${Share.badge(c)}</div>
         <div class="card-title">${esc(c.title)}</div>
         <div class="muted small">${[c.time && c.time + ' Uhr', c.venue && esc(c.venue), !isPast && Schedule.summary(c), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
         <div class="band-chips">${c.lineup.map((e) => {
@@ -640,7 +644,7 @@ async function viewConcert(id, sub) {
     <div class="page-head">
       <div><h1>${esc(c.title)}</h1>
         <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}
-          ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}</div></div>
+          ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}${Share.badge(c)}</div></div>
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
     </div>`}
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
@@ -914,6 +918,7 @@ function cloudStateText() {
     error: `<span class="warn-text">! Fehler: ${esc(Cloud.error)}</span>`,
     loggedout: Cloud.error ? `<span class="warn-text">${esc(Cloud.error)}</span>` : 'Nicht angemeldet',
     off: 'Nicht eingerichtet',
+    notmember: '<span class="warn-text">Du bist noch nicht im Team – siehe unten.</span>',
   };
   return t[Cloud.state] || '';
 }
@@ -1014,7 +1019,7 @@ function bindCloudCard() {
   if (sync) sync.onclick = () => Cloud.sync();
   const logout = $('[data-logout]');
   if (logout) logout.onclick = async () => {
-    if (await confirmDialog('Abmelden? Die Daten bleiben auf diesem Gerät gespeichert.', 'Abmelden')) { await Cloud.signOut(); render(); }
+    if (await confirmDialog('Abmelden? Die Daten bleiben auf diesem Gerät gespeichert. Meldet sich hier später ein anderes Konto an, werden sie vom Gerät gelöscht (in der Cloud bleiben sie).', 'Abmelden')) { await Cloud.signOut(); render(); }
   };
   const link = $('[data-link]');
   if (link) link.onclick = async () => {
@@ -1034,6 +1039,7 @@ async function viewMore() {
   app().innerHTML = `
     <div class="page-head"><h1>Cloud & Backup</h1></div>
     ${cloudCard()}
+    ${Share.teamCard()}
     <div class="stats">
       <div class="card stat"><b>${concerts.length}</b><span>Konzerte</span></div>
       <div class="card stat"><b>${bands.length}</b><span>Bands</span></div>
@@ -1054,6 +1060,7 @@ async function viewMore() {
       <p class="muted small">Tipp: Über „Zum Home-Bildschirm hinzufügen“ lässt sich die Ablage wie eine App nutzen – auch offline.</p>
     </div>`;
   bindCloudCard();
+  Share.bindTeamCard();
   $('[data-export]').onclick = exportAll;
   $('[data-import]').onchange = (e) => e.target.files[0] && importAll(e.target.files[0]);
   const p = $('[data-persist]');

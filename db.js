@@ -47,6 +47,7 @@ const DB = (() => {
     async get(name, id) { return req((await store(name)).get(id)); },
     async put(name, obj) { await req((await store(name, 'readwrite')).put(obj)); return obj; },
     async del(name, id) { return req((await store(name, 'readwrite')).delete(id)); },
+    async clear(name) { return req((await store(name, 'readwrite')).clear()); },
   };
 
   function changed(name, obj) { listeners.forEach((f) => f(name, obj)); }
@@ -70,6 +71,8 @@ const DB = (() => {
       const old = await raw.get(name, id);
       if (!old) return;
       const tomb = { id, deleted: true, dirty: true, updatedAt: new Date().toISOString(), bandId: old.bandId ?? null };
+      // Für den Abgleich nötig: wer etwas sehen darf und wo die Datei liegt
+      for (const k of ['festivalId', 'owner', 'sharedWith', 'filePath', '_synced']) if (old[k] !== undefined) tomb[k] = old[k];
       await raw.put(name, tomb);
       changed(name, tomb);
     },

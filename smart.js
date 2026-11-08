@@ -599,7 +599,7 @@ const Smart = (() => {
       const title = (nc.title || it.bandName).trim();
       const key = norm(title) + '|' + (nc.date || t0);
       if (!newConcerts.has(key)) {
-        const c = { id: uid(), title, date: nc.date || t0, venue: (nc.venue || '').trim(), notes: '', lineup: [], createdAt: nowIso() };
+        const c = { id: uid(), title, date: nc.date || t0, venue: (nc.venue || '').trim(), notes: '', lineup: [], sharedWith: Share.defaults(), createdAt: nowIso() };
         await DB.put('concerts', c);
         newConcerts.set(key, c.id);
       }

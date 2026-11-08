@@ -520,3 +520,13 @@ td.ph { text-align: center; }
 .fest-day-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .fest-stage { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
 .fest-stage-name { display: flex; gap: 8px; align-items: baseline; font-weight: 600; color: var(--text); flex-wrap: wrap; }
+
+/* ---------- Team & Teilen ---------- */
+.share-pick { border: 1px solid var(--line, #333); border-radius: 10px; padding: 8px 12px 10px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.share-pick legend { font-size: .88rem; color: var(--muted); padding: 0 4px; }
+.form .share-pick label.radio, .form .share-pick label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.share-pick input[type=radio], .share-pick input[type=checkbox] { width: 20px; min-height: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+.share-people { display: flex; flex-direction: column; gap: 6px; padding-left: 28px; }
+.badge.share { color: #cfe3ff; background: #1f2d44; border-color: #2e4466; }
+.team-list { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 4px; }
+.team-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line, #333); font-size: .92rem; }
