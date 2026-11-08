@@ -589,6 +589,7 @@ async function viewConcert(id) {
 
   const rel = relDay(c.date);
   const isPast = c.date && c.date < today();
+  const allPrint = PatchUI.concertSheets(c, profiles, bands, docs);
   app().innerHTML = `
     <a class="back" href="#/concerts">‹ Konzerte</a>
     <div class="page-head">
@@ -602,7 +603,8 @@ async function viewConcert(id) {
       ${profiles.length ? `<label class="lbl">🎛 Stagebox für dieses Konzert
         <select data-cprofile><option value="">– wählen –</option>${profiles.map((p) => `<option value="${p.id}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>`
         : '<p class="small muted">Lege unter „Stagebox“ ein Profil an, um Patchlisten zu erzeugen.</p>'}
-      ${profiles.length && c.lineup.length ? `<button class="primary" data-printall ${c.profileId ? '' : 'disabled title="Erst eine Stagebox wählen"'}>🖨 Alle Patchlisten drucken</button>` : ''}
+      ${profiles.length && c.lineup.length ? `<div class="printall-wrap"><button class="primary" data-printall ${allPrint.count ? '' : 'disabled'}>🖨 Alle Patchlisten drucken</button>
+        <span class="small muted">${allPrint.count ? `${allPrint.count} Band${allPrint.count > 1 ? 's' : ''} · Stagebox „${esc(allPrint.profile.name)}“${c.profileId ? '' : ' (Vorauswahl)'}${(c.schedule || []).length ? ' · mit Tagesablauf' : ''}` : 'Keine Band hat eine Inputliste'}${allPrint.missing.length ? `<br><span class="warn-text">ohne Inputliste: ${allPrint.missing.map(esc).join(', ')}</span>` : ''}</span></div>` : ''}
     </div>
     ${Schedule.html(c, bandMap)}
     ${materialHtml(c, bandMap, docs)}
@@ -618,7 +620,7 @@ async function viewConcert(id) {
   const cp = $('[data-cprofile]');
   if (cp) cp.onchange = () => { c.profileId = cp.value || null; save(); };
   const pa = $('[data-printall]');
-  if (pa) pa.onclick = () => PatchUI.printConcert(c);
+  if (pa) pa.onclick = () => printPages(allPrint.html);
   Schedule.bind(c, bandMap, docs);
   $('[data-editc]').onclick = () => concertDialog(c);
   $('[data-delc]').onclick = async () => {
@@ -991,6 +993,23 @@ async function viewMore() {
   const p = $('[data-persist]');
   if (p) p.onclick = async () => { const ok = await navigator.storage?.persist?.(); toast(ok ? 'Dauerhafter Speicher aktiv' : 'Vom Browser abgelehnt – App zum Home-Bildschirm hinzufügen hilft oft'); render(); };
 }
+
+/* ---------------- Drucken ----------------
+   window.print() muss direkt aus dem Antippen heraus aufgerufen werden – sonst ignoriert
+   Safari auf iPhone/iPad den Druck. Deshalb wird alles vorher fertig vorbereitet. */
+function printPages(html) {
+  let root = $('#print-root');
+  if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
+  root.innerHTML = html;
+  document.body.classList.add('print-all');
+  window.print();
+}
+function clearPrintPages() {
+  document.body.classList.remove('print-all');
+  const root = $('#print-root');
+  if (root) root.innerHTML = '';
+}
+window.addEventListener('hashchange', clearPrintPages);
 
 /* ---------------- Router ---------------- */
 let renderSeq = 0;

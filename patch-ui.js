@@ -202,11 +202,10 @@ const PatchUI = (() => {
     if (el) el.outerHTML = printSheet(ctx.b, ctx.profile, inp, res, ctx.concert, ctx.slot);
   }
 
-  /** Alle Patchlisten eines Konzerts (eine Seite pro Band) drucken. */
-  async function printConcert(c) {
-    const profile = c.profileId && (await DB.get('profiles', c.profileId));
-    if (!profile) { toast('Bitte zuerst oben eine Stagebox für das Konzert wählen'); return; }
-    const [bands, docs] = await Promise.all([Data.bands(), Data.docs()]);
+  /** Druckseiten für ein ganzes Konzert vorbereiten (Tagesablauf + eine Patchliste pro Band). */
+  function concertSheets(c, profiles, bands, docs) {
+    const profile = profiles.find((p) => p.id === c.profileId) || profiles.find((p) => p.id === localStorage.getItem('patch.lastProfile')) || profiles[0];
+    if (!profile) return { html: '', count: 0, missing: [], profile: null };
     const sheets = [], missing = [];
     for (const e of c.lineup) {
       const b = bands.find((x) => x.id === e.bandId);
@@ -216,16 +215,9 @@ const PatchUI = (() => {
       if (!inp.rows.length) { missing.push(b.name); continue; }
       sheets.push(printSheet(b, profile, inp, Patch.generate(inp.rows, profile, b.patchOverrides?.[profile.id] || {}), c, e));
     }
-    if (!sheets.length) { toast('Für keine Band gibt es eine Inputliste'); return; }
-    if (missing.length && !(await confirmDialog(`Ohne Inputliste (wird übersprungen): <b>${missing.map(esc).join(', ')}</b>. Trotzdem drucken?`, 'Drucken'))) return;
-    if ((c.schedule || []).length) sheets.unshift(Schedule.sheet(c, new Map(bands.map((x) => [x.id, x])))); // Tagesablauf als erste Seite
-    let root = $('#print-root');
-    if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
-    root.innerHTML = sheets.join('');
-    document.body.classList.add('print-all');
-    const done = () => { document.body.classList.remove('print-all'); root.innerHTML = ''; window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 50);
+    const count = sheets.length;
+    if (count && (c.schedule || []).length) sheets.unshift(Schedule.sheet(c, new Map(bands.map((x) => [x.id, x])))); // Tagesablauf als erste Seite
+    return { html: sheets.join(''), count, missing, profile };
   }
 
   /* ---------- Mix-Info korrigieren ---------- */
@@ -386,7 +378,7 @@ const PatchUI = (() => {
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     };
-    $('[data-print]', root).onclick = () => { refreshPrint(); window.print(); };
+    $('[data-print]', root).onclick = () => { clearPrintPages(); refreshPrint(); window.print(); };
     $$('[data-pcol]', root).forEach((x) => (x.onchange = () => {
       localStorage.setItem('patch.printCols', JSON.stringify({ ...printCols(), [x.dataset.pcol]: x.checked }));
       refreshPrint();
@@ -539,5 +531,5 @@ const PatchUI = (() => {
     };
   }
 
-  return { overview, bindOverview, patchTab, bindPatch, viewStagebox, viewProfile, profileDialog, printConcert };
+  return { overview, bindOverview, patchTab, bindPatch, viewStagebox, viewProfile, profileDialog, concertSheets };
 })();

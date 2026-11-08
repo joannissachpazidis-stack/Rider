@@ -286,15 +286,7 @@ const Schedule = (() => {
       </section>`;
   }
 
-  function print(c, bandMap) {
-    let root = $('#print-root');
-    if (!root) { root = document.createElement('div'); root.id = 'print-root'; document.body.appendChild(root); }
-    root.innerHTML = sheet(c, bandMap);
-    document.body.classList.add('print-all');
-    const done = () => { document.body.classList.remove('print-all'); root.innerHTML = ''; window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    setTimeout(() => window.print(), 50);
-  }
+  const print = (c, bandMap) => printPages(sheet(c, bandMap));
 
   /** Kurzinfo für die Konzertkarte, z. B. „Get-in 14:00“ */
   function summary(c) {

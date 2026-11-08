@@ -481,3 +481,5 @@ td.ph { text-align: center; }
   .sched-sheet .ps-table { font-size: 13pt; }
   .sched-sheet .ps-show td { font-weight: 800; border-top: 2px solid #000; }
 }
+
+.printall-wrap { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
