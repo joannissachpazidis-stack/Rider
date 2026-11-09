@@ -30,6 +30,7 @@ Wird eine Datei auf die Karte einer Band im Konzert gezogen, ist Band und Konzer
 
 ### Stagebox-Profile
 Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben willst – aus der Standard-Vorlage (32 Kanäle), leer, aus der Inputliste einer Band oder per eingefügter Liste. Pro Konzert lässt sich festlegen, welche Stagebox dort genutzt wird; der „🎛 Patch“-Knopf bei jeder Band nutzt dann dieses Profil.
+Unter den Inputs hat jedes Profil eigene **Outputs** (z. B. Monitorwege, IEM, Main L/R, Sub), in der Anzahl einstellbar wie die Inputs. In der Patchliste und auf dem Ausdruck stehen sie getrennt unter den Inputs; pro Band lässt sich zu jedem Output notieren, wofür er genutzt wird.
 
 ### Konzerte
 - Anstehende Konzerte nach Datum und Uhrzeit (das nächste oben, mit „Heute“, „Morgen“, „in 5 Tagen“), Konzerte ohne Datum separat, vergangene eingeklappt. Vergangene Konzerte bleiben mit den damals gültigen Ridern erhalten.
@@ -77,7 +78,14 @@ Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben 
 2. Den **Link für weiteres Gerät** schicken. Damit **Neues Konto anlegen** – mit genau dieser E-Mail.
 3. Fertig: Bands und Rider sind sofort da. Konzerte sehen sie, sobald sie mit ihnen (oder dem ganzen Team) geteilt sind.
 
-Wer ein Konto hat, aber nicht in der Team-Liste steht, sieht nichts. Die erste Person, die sich anmeldet, kommt automatisch ins Team.
+Wer ein Konto hat, aber nicht in der Team-Liste steht, sieht nichts. Die erste Person, die sich anmeldet, kommt automatisch ins Team und wird **Admin**.
+
+**Rechte im Team**
+- **Admin** (eine Person): darf alles und schaltet unter *Cloud → Team* mit „verwalten“ frei, wer sonst noch das Team verwalten darf – oder nimmt das Recht wieder weg.
+- **Verwaltung**: darf Personen hinzufügen und normale Mitglieder entfernen, aber keine Rechte vergeben.
+- **Mitglied**: arbeitet mit allen Bands, Ridern und geteilten Konzerten, kann das Team aber nicht ändern.
+
+Die Regeln prüft die Datenbank selbst. Beim Update wird automatisch das älteste Konto im Team Admin. Admin wechseln geht im SQL Editor (Befehl steht oben in `schema.sql`).
 
 **Update von einer älteren Version** (vorher hatte jede:r nur eigene Daten): [`supabase/schema.sql`](supabase/schema.sql) einfach noch einmal im SQL Editor ausführen. Alle bestehenden Konten kommen dabei ins Team; bisherige Konzerte bleiben privat, bis du sie teilst.
 

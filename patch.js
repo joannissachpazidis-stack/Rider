@@ -389,6 +389,7 @@ const Patch = (() => {
   const newProfile = (name, labels) => ({
     id: uid(), name, notes: '', createdAt: nowIso(),
     channels: labels.map((label, i) => ({ ch: i + 1, label, note: '' })),
+    outputs: [],
   });
 
   /* ---------- Patch erzeugen ---------- */
