@@ -3,6 +3,19 @@
   publish = "."
   command = ""
 
+# Sicherheits-Header für alle Seiten
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Nur Code von dieser Seite selbst darf laufen; Daten gehen nur an Supabase.
+    # Eingeschleuster Code (z. B. aus einem präparierten Rider) wird dadurch vom Browser blockiert.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self' https://*.supabase.co data: blob:; img-src 'self' blob: data:; frame-src blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Strict-Transport-Security = "max-age=31536000"
+
 # Der Service Worker muss immer frisch geladen werden, damit Updates sofort ankommen.
 [[headers]]
   for = "/sw.js"

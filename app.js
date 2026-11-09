@@ -132,6 +132,19 @@ function confirmDialog(text, ok = 'OK', danger = false) {
 }
 
 /* ---------------- Dokument-Vorschau ---------------- */
+// Was für eine Datei ist das wirklich? Erkennung an den ersten Bytes ('pdf', 'image/…', 'text' oder null).
+async function safeKind(d) {
+  const b = new Uint8Array(await d.blob.slice(0, 16).arrayBuffer());
+  const at = (s, o = 0) => [...s].every((ch, i) => b[o + i] === ch.charCodeAt(0));
+  if (at('%PDF')) return 'pdf';
+  if (b[0] === 0x89 && at('PNG', 1)) return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (at('GIF8')) return 'image/gif';
+  if (at('RIFF') && at('WEBP', 8)) return 'image/webp';
+  const textLike = /^text\/(plain|csv|markdown)/.test(d.mime || '') || /\.(txt|csv|md)$/i.test(d.fileName || '');
+  return textLike ? 'text' : null;
+}
+
 async function previewDoc(id) {
   const d = await DB.get('docs', id);
   if (!d) return;
@@ -143,12 +156,19 @@ async function previewDoc(id) {
     try { d.blob = await Cloud.fetchFile(d); } catch { /* unten Hinweis */ } finally { pr.close(); }
   }
   if (!d.blob && d.fileName) body = '<p class="warn-text">Die Datei ist auf diesem Gerät noch nicht verfügbar. Melde dich in der Cloud an bzw. warte, bis die Synchronisierung fertig ist.</p>';
+  // Sicherheit: Angezeigt/geöffnet wird nur, was nachweislich PDF, Bild oder Text ist (am Dateiinhalt erkannt,
+  // nicht am angegebenen Typ). Alles andere – z. B. HTML oder SVG, die Code enthalten könnten – gibt es nur als Download.
+  let dlUrl = null;
   if (d.blob) {
-    url = URL.createObjectURL(d.blob);
-    if (d.mime?.startsWith('image/')) body = `<img class="preview" src="${url}" alt="">`;
-    else if (d.mime === 'application/pdf') body = `<iframe class="preview" src="${url}" title="Vorschau"></iframe>`;
-    else if (d.mime?.startsWith('text/') || /\.(txt|csv|md)$/i.test(d.fileName)) body = `<pre class="preview">${esc(await d.blob.text())}</pre>`;
-    else body = '<p class="muted">Für diesen Dateityp gibt es keine Vorschau – bitte öffnen oder herunterladen.</p>';
+    const kind = await safeKind(d);
+    dlUrl = URL.createObjectURL(new Blob([d.blob], { type: 'application/octet-stream' }));
+    if (kind === 'pdf') url = URL.createObjectURL(new Blob([d.blob], { type: 'application/pdf' }));
+    else if (kind?.startsWith('image/')) url = URL.createObjectURL(new Blob([d.blob], { type: kind }));
+    else if (kind === 'text') url = URL.createObjectURL(new Blob([d.blob], { type: 'text/plain;charset=utf-8' }));
+    if (kind === 'pdf') body = `<iframe class="preview" src="${url}" title="Vorschau"></iframe>`;
+    else if (kind?.startsWith('image/')) body = `<img class="preview" src="${url}" alt="">`;
+    else if (kind === 'text') body = `<pre class="preview">${esc(await d.blob.text())}</pre>`;
+    else body = '<p class="muted">Für diesen Dateityp gibt es keine Vorschau – bitte herunterladen und mit dem passenden Programm öffnen.</p>';
   }
   await modal(`
     <div class="modal-head">
@@ -159,11 +179,11 @@ async function previewDoc(id) {
     ${d.notes ? `<div class="notes">${esc(d.notes)}</div>` : ''}
     ${body}
     <div class="actions">
-      ${url ? `<a class="button ghost" href="${url}" download="${esc(d.fileName)}">Download</a>
-               <a class="button primary" href="${url}" target="_blank" rel="noopener">In neuem Tab öffnen</a>` : ''}
+      ${dlUrl ? `<a class="button ghost" href="${dlUrl}" download="${esc(d.fileName || 'datei')}">Download</a>` : ''}
+      ${url ? `<a class="button primary" href="${url}" target="_blank" rel="noopener">In neuem Tab öffnen</a>` : ''}
       <button class="ghost" data-close>Schließen</button>
     </div>`, (el) => el.classList.add('wide'));
-  if (url) setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+  for (const u of [url, dlUrl]) if (u) setTimeout(() => URL.revokeObjectURL(u), 5 * 60 * 1000);
 }
 
 async function editDocDialog(id) {
@@ -492,7 +512,7 @@ async function viewConcerts() {
       <div class="grow">
         <div class="card-top">${next ? '<span class="badge accent">Als Nächstes</span>' : ''}${rel && !isPast ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${Share.badge(c)}</div>
         <div class="card-title">${esc(c.title)}</div>
-        <div class="muted small">${[c.time && c.time + ' Uhr', c.venue && esc(c.venue), !isPast && Schedule.summary(c), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
+        <div class="muted small">${[c.time && esc(c.time) + ' Uhr', c.venue && esc(c.venue), !isPast && esc(Schedule.summary(c)), c.date && toDate(c.date).getFullYear() !== new Date().getFullYear() && toDate(c.date).getFullYear()].filter(Boolean).join(' · ')}</div>
         <div class="band-chips">${c.lineup.map((e) => {
           const ok = e.docIds.some((id) => docMap.has(id));
           return `<span class="bchip ${ok ? 'ok' : 'missing'}" title="${ok ? 'Rider vorhanden' : 'noch kein Rider'}">${esc(bandMap.get(e.bandId)?.name || '?')}</span>`;
@@ -643,7 +663,7 @@ async function viewConcert(id, sub) {
     ${fest ? Festival.head(fest) + Festival.dayHead(fest) : `    <a class="back" href="#/concerts">‹ Konzerte</a>
     <div class="page-head">
       <div><h1>${esc(c.title)}</h1>
-        <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}
+        <div class="muted">${[c.date && fmtWeekday(c.date) + ', ' + fmtDate(c.date), c.time && esc(c.time) + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}
           ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}${Share.badge(c)}</div></div>
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
     </div>`}
@@ -772,7 +792,7 @@ async function viewBands() {
 function bandConcerts(bc, bandId) {
   if (!bc.length) return '<p class="muted">Noch in keinem Konzert.</p>';
   const t = today();
-  const row = (c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[c.date && fmtDate(c.date), c.time && c.time + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span>${relDay(c.date) ? `<span class="badge">${relDay(c.date)}</span>` : ''}</a>`;
+  const row = (c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[c.date && fmtDate(c.date), c.time && esc(c.time) + ' Uhr', c.venue && esc(c.venue)].filter(Boolean).join(' · ')}</span></span>${relDay(c.date) ? `<span class="badge">${relDay(c.date)}</span>` : ''}</a>`;
   const up = bc.filter((c) => !c.date || c.date >= t).sort((a, b) => concertKey(a).localeCompare(concertKey(b)));
   const past = bc.filter((c) => c.date && c.date < t).sort((a, b) => concertKey(b).localeCompare(concertKey(a)));
   return `${up.length ? `<div class="list">${up.map(row).join('')}</div>` : '<p class="muted small">Kein anstehendes Konzert.</p>'}
@@ -896,12 +916,13 @@ async function importAll(file) {
   try { data = JSON.parse(await file.text()); } catch { toast('Datei ist kein gültiges Backup'); return; }
   if (data.app !== 'rider-ablage') { toast('Datei ist kein Rider-Ablage-Backup'); return; }
   if (!(await confirmDialog(`Backup vom ${fmtDate(data.exportedAt)} einspielen? (${data.bands.length} Bands, ${data.concerts.length} Konzerte, ${data.docs.length} Unterlagen)<br><span class="muted small">Vorhandene Einträge mit gleicher ID werden überschrieben, alles andere bleibt erhalten.</span>`, 'Einspielen'))) return;
-  for (const b of data.bands) await DB.put('bands', b);
-  for (const c of data.concerts) await DB.put('concerts', c);
-  for (const p of data.profiles || []) await DB.put('profiles', p);
-  for (const d of data.docs) {
-    const { data: dataUrl, ...rest } = d;
-    rest.blob = dataUrl ? await (await fetch(dataUrl)).blob() : null;
+  const ok = (x) => x && typeof x === 'object' && /^[\w-]{1,80}$/.test(x.id);
+  for (const b of data.bands.filter(ok)) await DB.put('bands', DB.sanitize(b));
+  for (const c of data.concerts.filter(ok)) await DB.put('concerts', DB.sanitize(c));
+  for (const p of (data.profiles || []).filter(ok)) await DB.put('profiles', DB.sanitize(p));
+  for (const d of data.docs.filter(ok)) {
+    const { data: dataUrl, ...rest } = DB.sanitize(d);
+    rest.blob = typeof dataUrl === 'string' && dataUrl.startsWith('data:') ? await (await fetch(dataUrl)).blob() : null;
     rest.fileUploaded = false;
     await DB.put('docs', rest);
   }
@@ -997,6 +1018,7 @@ function bindCloudCard() {
       btns.forEach((b) => (b.disabled = true));
       try {
         if (mode === 'up') {
+          if (login.password.value.length < 10) { err.textContent = 'Bitte ein Passwort mit mindestens 10 Zeichen wählen.'; err.hidden = false; return; }
           const r = await Cloud.signUp(login.email.value.trim(), login.password.value);
           if (r === 'confirm') { toast('Bestätigungs-Mail verschickt'); err.textContent = 'Bitte bestätige die E-Mail und melde dich dann hier an.'; err.hidden = false; return; }
         } else {
@@ -1019,7 +1041,22 @@ function bindCloudCard() {
   if (sync) sync.onclick = () => Cloud.sync();
   const logout = $('[data-logout]');
   if (logout) logout.onclick = async () => {
-    if (await confirmDialog('Abmelden? Die Daten bleiben auf diesem Gerät gespeichert. Meldet sich hier später ein anderes Konto an, werden sie vom Gerät gelöscht (in der Cloud bleiben sie).', 'Abmelden')) { await Cloud.signOut(); render(); }
+    const pending = await Cloud.pendingChanges();
+    const res = await modal(`
+      <h2>Abmelden</h2>
+      <form class="form">
+        <label class="check"><input type="checkbox" name="wipe" checked> Daten von diesem Gerät löschen</label>
+        <p class="muted small">Empfohlen auf gemeinsam genutzten Geräten (z. B. Büro-PC). In der Cloud bleibt alles erhalten – nach dem nächsten Anmelden ist alles wieder da.</p>
+        ${pending ? `<p class="warn-text small">Achtung: ${pending} Änderung${pending > 1 ? 'en sind' : ' ist'} noch nicht in der Cloud. Beim Löschen ${pending > 1 ? 'gehen sie' : 'geht sie'} verloren – erst mit Internet synchronisieren.</p>` : ''}
+        <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">Abmelden</button></div>
+      </form>`, (el, done) => {
+      const f = $('form', el);
+      f.onsubmit = (e) => { e.preventDefault(); done({ wipe: f.wipe.checked }); };
+    });
+    if (!res) return;
+    await Cloud.signOut(res);
+    toast(res.wipe ? 'Abgemeldet – Daten von diesem Gerät gelöscht' : 'Abgemeldet');
+    render();
   };
   const link = $('[data-link]');
   if (link) link.onclick = async () => {

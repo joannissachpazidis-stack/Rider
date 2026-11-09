@@ -94,6 +94,7 @@ Die Regeln prüft die Datenbank selbst. Beim Update wird automatisch das ältest
 - Wenn alle Kolleg:innen ihr Konto angelegt haben, kannst du unter *Authentication → Sign In / Providers* „Allow new users to sign up“ ausschalten. Nötig ist das nicht: Fremde Konten sehen ohne Team-Eintrag nichts.
 - Meldet sich auf einem Gerät ein anderes Konto an als vorher, werden die lokalen Daten auf dem Gerät gelöscht (in der Cloud bleibt alles), damit nichts ins falsche Konto wandert.
 - Der anon-Key ist dafür gedacht, öffentlich zu sein. Geschützt wird über Login und Row Level Security.
+- **Datenschutz & Sicherheit:** siehe [`DATENSCHUTZ.md`](DATENSCHUTZ.md) – was wo gespeichert ist, wer was sieht, eingebaute Schutzmaßnahmen und eine Checkliste für den Einsatz (z. B. im Jugendhaus).
 
 ## Starten
 
