@@ -1,0 +1,10 @@
+# Netlify: reine Web-App ohne Build-Schritt – der Ordner wird so veröffentlicht, wie er ist.
+[build]
+  publish = "."
+  command = ""
+
+# Der Service Worker muss immer frisch geladen werden, damit Updates sofort ankommen.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

@@ -104,7 +104,7 @@ python3 -m http.server 8000
 # → http://localhost:8000
 ```
 
-Oder über **GitHub Pages**: Repository → *Settings → Pages* → Branch auswählen → Ordner `/ (root)`.
+Online läuft die App über **Netlify**, verbunden mit diesem Repository: Jede Änderung im Haupt-Branch wird automatisch veröffentlicht. Die Einstellungen stehen in [`netlify.toml`](netlify.toml) (kein Build-Schritt, Ordner `/`).
 
 ## Technik
 - Reines HTML/CSS/JavaScript, keine Abhängigkeiten außer [pdf.js](https://mozilla.github.io/pdf.js/) (liegt in `vendor/`, Apache-2.0) zum Auslesen von PDFs.
