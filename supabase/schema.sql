@@ -4,6 +4,10 @@
 --
 -- Team-Prinzip:
 --   * Wer in der Tabelle "members" steht, gehört zum Team.
+--   * Rollen: 'admin' (eine Person, verwaltet alles), 'manager' (darf Mitglieder
+--     hinzufügen/entfernen), 'member'. Nur der Admin vergibt oder entzieht 'manager'.
+--     Admin wechseln: update public.members set role = 'admin' where email = 'neue@mail.de';
+--                     update public.members set role = 'member' where email = 'alte@mail.de';
 --   * Bands, Rider/Unterlagen und Stagebox-Profile sehen und bearbeiten alle im Team.
 --   * Konzerte und Festivals sieht nur, wer sie angelegt hat – plus die Personen,
 --     mit denen sie geteilt wurden ('*' = ganzes Team).
@@ -14,6 +18,10 @@ create table if not exists public.members (
   added_at timestamptz not null default now()
 );
 
+alter table public.members add column if not exists role text not null default 'member';
+alter table public.members drop constraint if exists members_role_check;
+alter table public.members add constraint members_role_check check (role in ('admin', 'manager', 'member'));
+
 -- Beim ersten Ausführen: alle schon vorhandenen Konten kommen ins Team.
 insert into public.members (email)
   select lower(email) from auth.users
@@ -22,6 +30,11 @@ insert into public.members (email)
 
 create or replace function public.my_email() returns text
   language sql stable as $$ select lower(coalesce(auth.jwt() ->> 'email', '')) $$;
+
+-- Gibt es noch keinen Admin, wird das älteste Konto im Team Admin (in der Regel du).
+update public.members set role = 'admin'
+  where not exists (select 1 from public.members where role = 'admin')
+    and email = (select lower(u.email) from auth.users u join public.members m on m.email = lower(u.email) order by u.created_at limit 1);
 
 create or replace function public.is_member() returns boolean
   language sql stable security definer set search_path = public as $$
@@ -34,14 +47,37 @@ create or replace function public.members_empty() returns boolean
   select not exists (select 1 from public.members)
 $$;
 
+create or replace function public.my_role() returns text
+  language sql stable security definer set search_path = public as $$
+  select role from public.members where email = public.my_email()
+$$;
+
+-- Die erste Person im Team wird automatisch Admin
+create or replace function public.members_first_admin() returns trigger
+  language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.members where role = 'admin') then new.role := 'admin'; end if;
+  return new;
+end $$;
+drop trigger if exists members_first_admin on public.members;
+create trigger members_first_admin before insert on public.members
+  for each row execute function public.members_first_admin();
+
 alter table public.members enable row level security;
 drop policy if exists "team sehen" on public.members;
 drop policy if exists "team hinzufuegen" on public.members;
 drop policy if exists "team entfernen" on public.members;
+drop policy if exists "team rechte" on public.members;
 create policy "team sehen" on public.members for select to authenticated using (public.is_member());
+-- Hinzufügen: Admin und Verwaltung (nur als normales Mitglied) – oder die allererste Person
 create policy "team hinzufuegen" on public.members for insert to authenticated
-  with check (public.is_member() or (public.members_empty() and email = public.my_email()));
-create policy "team entfernen" on public.members for delete to authenticated using (public.is_member());
+  with check ((public.my_role() in ('admin', 'manager') and role = 'member') or (public.members_empty() and email = public.my_email()));
+-- Rechte ändern: nur der Admin, und nur zwischen Mitglied und Verwaltung
+create policy "team rechte" on public.members for update to authenticated
+  using (public.my_role() = 'admin' and role <> 'admin') with check (role in ('manager', 'member'));
+-- Entfernen: Admin alle außer Admins, Verwaltung nur normale Mitglieder
+create policy "team entfernen" on public.members for delete to authenticated
+  using ((public.my_role() = 'admin' and role <> 'admin') or (public.my_role() = 'manager' and role = 'member'));
 
 -- 2) Bands, Konzerte und Unterlagen
 create table if not exists public.items (

@@ -31,7 +31,8 @@ const Cloud = (() => {
   if (cfg) localStorage.getItem(LS.cfg) && localStorage.setItem(LS.cfg, JSON.stringify(cfg));
   let session = read(LS.session);
   if (session?.user?.id && !localStorage.getItem(LS.lastUser)) localStorage.setItem(LS.lastUser, session.user.id);
-  let team = read(LS.team) || [];
+  // Team: [{ email, role }] – role: 'admin' | 'manager' | 'member'
+  let team = (read(LS.team) || []).map((m) => (typeof m === 'string' ? { email: m, role: 'member' } : m));
   let state = 'off';
   let lastError = '';
   const listeners = new Set();
@@ -99,7 +100,7 @@ const Cloud = (() => {
     const me = myEmail();
     let list;
     try {
-      list = (await api('/rest/v1/members?select=email&order=email')).map((m) => m.email);
+      list = await api('/rest/v1/members?select=email,role&order=email');
     } catch (e) {
       if (e.status === 404 || /members|relation|schema cache/i.test(e.message)) {
         throw new Error('Die Datenbank ist noch nicht auf dem Team-Stand: Bitte supabase/schema.sql im Supabase „SQL Editor“ erneut ausführen.');
@@ -107,11 +108,11 @@ const Cloud = (() => {
       throw e;
     }
     if (!list.length) {
-      try { await api('/rest/v1/members', { method: 'POST', body: { email: me }, headers: { Prefer: 'return=minimal' } }); list = [me]; } catch { /* Team ist nicht leer */ }
+      try { await api('/rest/v1/members', { method: 'POST', body: { email: me }, headers: { Prefer: 'return=minimal' } }); list = [{ email: me, role: 'admin' }]; } catch { /* Team ist nicht leer */ }
     }
     team = list;
     localStorage.setItem(LS.team, JSON.stringify(team));
-    return team.includes(me);
+    return team.some((m) => m.email === me);
   }
 
   async function push() {
@@ -297,16 +298,28 @@ const Cloud = (() => {
     get config() { return cfg; },
     get lastSync() { return localStorage.getItem(LS.lastSync); },
     get myEmail() { return myEmail(); },
-    get team() { return team; },
+    get team() { return team.map((m) => m.email); },
+    get members() { return team; },
+    get myRole() { return team.find((m) => m.email === myEmail())?.role || ''; },
     configured, loggedIn, sync, schedule, fetchFile,
     async addMember(email) {
       email = String(email || '').trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Bitte eine gültige E-Mail-Adresse eingeben.');
-      await api('/rest/v1/members', { method: 'POST', body: { email }, headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' } });
+      try {
+        await api('/rest/v1/members', { method: 'POST', body: { email }, headers: { Prefer: 'return=minimal,resolution=ignore-duplicates' } });
+      } catch (e) {
+        throw /security|policy|permission/i.test(e.message) ? new Error('Keine Berechtigung – nur Admin und freigeschaltete Personen können das Team verwalten.') : e;
+      }
+      await checkMember();
+    },
+    async setRole(email, role) {
+      const r = await api('/rest/v1/members?email=eq.' + encodeURIComponent(email), { method: 'PATCH', body: { role }, headers: { Prefer: 'return=representation' } });
+      if (!r?.length) throw new Error('Keine Berechtigung – nur der Admin kann Rechte vergeben.');
       await checkMember();
     },
     async removeMember(email) {
-      await api('/rest/v1/members?email=eq.' + encodeURIComponent(email), { method: 'DELETE' });
+      const r = await api('/rest/v1/members?email=eq.' + encodeURIComponent(email), { method: 'DELETE', headers: { Prefer: 'return=representation' } });
+      if (!r?.length) throw new Error('Keine Berechtigung, diese Person zu entfernen.');
       await checkMember();
     },
     onState(fn) { listeners.add(fn); },

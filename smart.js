@@ -377,6 +377,32 @@ const Smart = (() => {
     });
   }
 
+  // Dateien aus einem Drop holen – auch ganze Ordner (z. B. aus OneDrive, Dropbox, Explorer/Finder).
+  // Systemdateien und Office-Sperrdateien werden ausgelassen.
+  const JUNK = /^(\.|~\$|thumbs\.db$|desktop\.ini$|icon\r?$)/i;
+  async function filesFromDrop(dt) {
+    if (!dt) return [];
+    // Einträge müssen sofort im Drop-Ereignis gelesen werden
+    const entries = [...(dt.items || [])].filter((i) => i.kind === 'file').map((i) => i.webkitGetAsEntry?.());
+    if (!entries.length || entries.some((e) => !e)) return [...dt.files].filter((f) => !JUNK.test(f.name));
+    const out = [];
+    const readDir = (dir) => new Promise((resolve) => {
+      const r = dir.createReader(), all = [];
+      const next = () => r.readEntries((batch) => { if (!batch.length) resolve(all); else { all.push(...batch); next(); } }, () => resolve(all));
+      next();
+    });
+    const walk = async (entry, depth = 0) => {
+      if (JUNK.test(entry.name)) return;
+      if (entry.isFile) { const f = await new Promise((res) => entry.file(res, () => res(null))); if (f) out.push(f); }
+      else if (entry.isDirectory && depth < 5) for (const e of await readDir(entry)) await walk(e, depth + 1);
+    };
+    for (const e of entries) await walk(e);
+    return out;
+  }
+  // Wurde statt einer Datei nur ein Link gezogen (z. B. aus OneDrive im Browser)?
+  const droppedLinkOnly = (dt) => !dt?.files?.length && [...(dt?.types || [])].some((t) => t === 'text/uri-list' || t === 'text/plain');
+  const LINK_HINT = 'Aus OneDrive/Dropbox im Browser kommt beim Ziehen nur ein Link an. Datei erst herunterladen und dann hineinziehen – oder direkt aus dem OneDrive-Ordner am PC ziehen.';
+
   // Kleiner Dialog mit Ablagefeld, z. B. nach "Veraltet"
   async function ask(hint, ctx = {}) {
     const files = await modal(`
@@ -389,7 +415,12 @@ const Smart = (() => {
       drop.onclick = async () => { const f = await pickFiles(); if (f.length) done(f); };
       drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
       drop.ondragleave = () => drop.classList.remove('over');
-      drop.ondrop = (e) => { e.preventDefault(); e.stopPropagation(); done([...e.dataTransfer.files]); };
+      drop.ondrop = async (e) => {
+        e.preventDefault(); e.stopPropagation(); drop.classList.remove('over');
+        if (droppedLinkOnly(e.dataTransfer)) { toast(LINK_HINT); return; }
+        const f = await filesFromDrop(e.dataTransfer);
+        if (f.length) done(f);
+      };
       const n = $('[data-note]', el);
       if (n) n.onclick = () => done('note');
     });
@@ -698,5 +729,5 @@ const Smart = (() => {
     render();
   }
 
-  return { run, ask, pickFiles, noteDialog, progress, analyzeBlob, diff, detectType, suggestName };
+  return { run, ask, pickFiles, filesFromDrop, droppedLinkOnly, LINK_HINT, noteDialog, progress, analyzeBlob, diff, detectType, suggestName };
 })();

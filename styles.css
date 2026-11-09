@@ -375,6 +375,9 @@ main .actions .grow { flex: 1; }
   .ps-table tr { break-inside: avoid; }
   .ps-table thead { display: table-header-group; }
   .ps-foot { font-size: 10pt; margin-top: 3mm; }
+  .ps-sub { font-size: 14pt; margin: 6mm 0 2mm; padding-top: 2mm; border-top: 3px solid #000; break-after: avoid; }
+  .ps-outs { font-size: 13pt; }
+  .ps-outs td.ps-num { font-size: 15pt; width: 18mm; }
 }
 
 /* ===== Feinschliff ===== */
@@ -530,3 +533,5 @@ td.ph { text-align: center; }
 .badge.share { color: #cfe3ff; background: #1f2d44; border-color: #2e4466; }
 .team-list { list-style: none; padding: 0; margin: 8px 0 12px; display: flex; flex-direction: column; gap: 4px; }
 .team-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line, #333); font-size: .92rem; }
+.team-list .role-toggle { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.team-list .role-toggle input { width: 18px; min-height: 18px; height: 18px; accent-color: var(--accent); }

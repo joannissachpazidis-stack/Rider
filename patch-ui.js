@@ -172,8 +172,12 @@ const PatchUI = (() => {
   }
 
   /* ---------- Druckblatt: nur das Wesentliche, für alle lesbar ---------- */
+  // Outputs des Profils + Notizen dieser Band dazu
+  const outputsOf = (b, profile) => (profile.outputs || []).map((o) => ({ ...o, band: b.outputNotes?.[profile.id]?.[o.ch] || '' }));
+
   function printSheet(b, profile, inp, res, concert = null, slot = null) {
     const rows = [...res.slots, ...res.overflow].filter((s) => s.input).sort((x, y) => x.ch - y.ch);
+    const outs = outputsOf(b, profile).filter((o) => o.label || o.band);
     const cols = Object.keys(PRINT_COLS).filter((k) => printCols()[k] && (k !== 'phantom' || rows.some((s) => s.input.r.phantom)));
     const cell = (k, r) => (k === 'phantom' ? (r.phantom ? '48V' : '') : esc(r[k] || ''));
     const info = [
@@ -190,7 +194,13 @@ const PatchUI = (() => {
           <thead><tr><th class="ps-name">Kanal</th><th class="ps-num">Stagebox</th><th class="ps-num">Übergabe Band</th>${cols.map((k) => `<th class="ps-x ps-${k}">${PRINT_COLS[k]}</th>`).join('')}</tr></thead>
           <tbody>${rows.map((s) => `<tr><td class="ps-name">${esc(s.input.r.source)}</td><td class="ps-num">${s.ch}</td><td class="ps-num">${s.input.r.ch}</td>${cols.map((k) => `<td class="ps-x ps-${k}">${cell(k, s.input.r)}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
-        <p class="ps-foot">${rows.length} Kanäle</p>
+        ${outs.length ? `
+        <h2 class="ps-sub">Outputs</h2>
+        <table class="ps-table ps-outs">
+          <thead><tr><th class="ps-num">Out</th><th class="ps-name">Bezeichnung</th><th>Für diese Band</th></tr></thead>
+          <tbody>${outs.map((o) => `<tr><td class="ps-num">${o.ch}</td><td class="ps-name">${esc(o.label)}</td><td>${esc(o.band || o.note || '')}</td></tr>`).join('')}</tbody>
+        </table>` : ''}
+        <p class="ps-foot">${rows.length} Kanäle${outs.length ? ` · ${outs.length} Outputs` : ''}</p>
       </section>`;
   }
 
@@ -298,6 +308,17 @@ const PatchUI = (() => {
         <td>${r ? ed(r, 'note', s.note || '') : `<span class="small muted">${esc(s.note || '')}</span>`}</td>
       </tr>`;
     };
+    const outs = outputsOf(b, profile).filter((o) => !hideEmpty || o.label || o.band);
+    const outHtml = (profile.outputs || []).length ? `
+      <h3 class="section no-print">Outputs <span class="badge">${(profile.outputs || []).length}</span></h3>
+      <div class="table-wrap no-print"><table class="ptable patch outs">
+        <thead><tr><th>Out</th><th>Dein Profil</th><th>Für diese Band</th><th>Notiz</th></tr></thead>
+        <tbody>${outs.map((o) => `<tr class="${o.label || o.band ? '' : 'empty-row'}">
+          <td class="ch">${o.ch}</td>
+          <td class="mine">${esc(o.label) || '<span class="muted">–</span>'}</td>
+          <td><input class="cell-in" data-onote="${o.ch}" value="${esc(o.band)}" placeholder="z. B. Wedge Vox Lead, IEM Drums" aria-label="Output ${o.ch} für diese Band"></td>
+          <td class="small muted">${esc(o.note || '')}</td></tr>`).join('')}</tbody>
+      </table></div>` : `<p class="small muted no-print">Keine Outputs im Profil – unter <a href="#/stagebox/${pid}">Profil bearbeiten</a> kannst du welche anlegen.</p>`;
     return `
       <div class="patch-head no-print">
         <label class="lbl">Stagebox-Profil
@@ -316,6 +337,7 @@ const PatchUI = (() => {
         <thead><tr><th>Stagebox</th><th>Dein Profil</th><th></th><th>← Band-Kanal</th><th>Quelle</th><th>Mikro / DI</th><th>Stativ</th><th>48V</th><th>Notiz</th></tr></thead>
         <tbody>${res.slots.map((s) => line(s)).join('')}${res.overflow.map((s) => line(s, true)).join('')}</tbody>
       </table></div>
+      ${outHtml}
       <div class="actions left no-print">
         <label class="check small"><input type="checkbox" data-hideempty ${hideEmpty ? 'checked' : ''}> leere Kanäle ausblenden</label>
         <span class="grow"></span>
@@ -340,6 +362,8 @@ const PatchUI = (() => {
       const r = s.input?.r;
       return [s.ch, s.label, r?.ch ?? '', r?.source ?? '', r?.mic ?? '', r?.stand ?? '', r?.phantom ? '48V' : '', r?.note ?? ''];
     });
+    const outs = outputsOf(b, profile).filter((o) => o.label || o.band || !hideEmpty);
+    if (outs.length) rows.push([], ['Output', 'Profil', 'Für diese Band', 'Notiz'], ...outs.map((o) => [o.ch, o.label, o.band, o.note || '']));
     return [head, ...rows];
   }
 
@@ -383,6 +407,15 @@ const PatchUI = (() => {
     $$('[data-pcol]', root).forEach((x) => (x.onchange = () => {
       localStorage.setItem('patch.printCols', JSON.stringify({ ...printCols(), [x.dataset.pcol]: x.checked }));
       refreshPrint();
+    }));
+    // Output-Notizen für diese Band (je Profil)
+    $$('[data-onote]', root).forEach((x) => (x.onchange = async () => {
+      b.outputNotes ||= {};
+      const m = (b.outputNotes[pid] ||= {});
+      if (x.value.trim()) m[x.dataset.onote] = x.value.trim(); else delete m[x.dataset.onote];
+      await DB.put('bands', b);
+      refreshPrint();
+      toast('Gespeichert');
     }));
     // Direkt in der Tabelle bearbeiten → Inputliste der Band
     $$('[data-ech]', root).forEach((x) => (x.onchange = async () => {
@@ -456,7 +489,7 @@ const PatchUI = (() => {
       <div class="list">${profiles.map((p) => {
         const used = p.channels.filter((c) => c.label && !['spare', 'empty'].includes(Patch.classify(c.label).cls)).length;
         return `<a class="card row-card" href="#/stagebox/${p.id}"><div class="avatar">🎛</div><span class="grow"><b>${esc(p.name)}</b><br>
-          <span class="muted small">${p.channels.length} Kanäle · ${used} belegt${p.notes ? ' · ' + esc(p.notes.slice(0, 60)) : ''}</span></span></a>`;
+          <span class="muted small">${p.channels.length} Kanäle · ${used} belegt${(p.outputs || []).length ? ` · ${p.outputs.length} Outputs` : ''}${p.notes ? ' · ' + esc(p.notes.slice(0, 60)) : ''}</span></span></a>`;
       }).join('') || '<div class="empty"><p class="muted">Noch kein Profil. Starte mit der Standard-Vorlage und passe sie an.</p></div>'}</div>`;
     $('[data-new]').onclick = async () => { const p = await profileDialog(); if (p) location.hash = '#/stagebox/' + p.id; };
   }
@@ -465,6 +498,11 @@ const PatchUI = (() => {
     setTab('stagebox');
     const p = await DB.get('profiles', id);
     if (!p) { app().innerHTML = '<p>Profil nicht gefunden. <a href="#/stagebox">Zurück</a></p>'; return; }
+    p.outputs ||= [];
+    const orow = (o) => `<tr class="${o.label ? '' : 'empty-row'}">
+        <td class="ch">${o.ch}</td>
+        <td><input value="${esc(o.label)}" data-ol="${o.ch}" placeholder="frei"></td>
+        <td><input value="${esc(o.note)}" data-on="${o.ch}" placeholder="z. B. Wedge, IEM, Main L/R, Sub"></td></tr>`;
     const row = (c) => {
       const k = Patch.classify(c.label);
       return `<tr class="${c.label ? 'fam-' + norm(k.fam) : 'empty-row'}">
@@ -480,13 +518,26 @@ const PatchUI = (() => {
         <div class="head-actions"><button class="ghost" data-dup>Duplizieren</button><button class="ghost danger-text" data-del>Löschen</button></div>
       </div>
       <textarea class="notes-in" rows="2" data-notes placeholder="Notizen, z. B. Stagebox A = 1–16, B = 17–32, Pult …">${esc(p.notes)}</textarea>
+      <h3 class="section">Inputs <span class="badge">${p.channels.length}</span></h3>
       <div class="table-wrap"><table class="ptable edit profile">
         <thead><tr><th>Kanal</th><th>Was soll hier liegen?</th><th>erkannt als</th><th>Notiz</th></tr></thead>
         <tbody>${p.channels.map(row).join('')}</tbody></table></div>
       <div class="actions left">
+        <button class="ghost small-btn" data-add1>+ 1 Kanal</button>
         <button class="ghost small-btn" data-add8>+ 8 Kanäle</button>
         <button class="ghost small-btn" data-rm1 ${p.channels.length <= 1 ? 'disabled' : ''}>− letzten Kanal</button>
         <button class="ghost small-btn" data-paste>📋 Liste einfügen</button>
+      </div>
+      <h3 class="section">Outputs <span class="badge">${p.outputs.length}</span></h3>
+      ${p.outputs.length ? `<div class="table-wrap"><table class="ptable edit profile outs">
+        <thead><tr><th>Out</th><th>Was geht hier raus?</th><th>Notiz</th></tr></thead>
+        <tbody>${p.outputs.map(orow).join('')}</tbody></table></div>`
+        : '<p class="muted small">Noch keine Outputs – z. B. Monitorwege, IEM, Main L/R, Sub, Aux.</p>'}
+      <div class="actions left">
+        <button class="ghost small-btn" data-oadd1>+ 1 Output</button>
+        <button class="ghost small-btn" data-oadd8>+ 8 Outputs</button>
+        <button class="ghost small-btn" data-orm1 ${p.outputs.length ? '' : 'disabled'}>− letzten Output</button>
+        <button class="ghost small-btn" data-opaste>📋 Liste einfügen</button>
       </div>
       <p class="muted small">Wird automatisch gespeichert. Tipp: Bezeichnungen wie „Kick In“, „OH L“, „Vox Lead“, „Keys R“ oder „Spare“ werden beim Patchen erkannt.</p>`;
 
@@ -503,10 +554,36 @@ const PatchUI = (() => {
       save();
     }));
     $$('[data-n]').forEach((i) => (i.oninput = () => { p.channels.find((x) => x.ch === +i.dataset.n).note = i.value; save(); }));
-    $('[data-add8]').onclick = async () => {
+    const addCh = async (k) => {
       const n = p.channels.length;
-      for (let i = 1; i <= 8; i++) p.channels.push({ ch: n + i, label: '', note: '' });
+      for (let i = 1; i <= k; i++) p.channels.push({ ch: n + i, label: '', note: '' });
       await DB.put('profiles', p); render();
+    };
+    $('[data-add1]').onclick = () => addCh(1);
+    $('[data-add8]').onclick = () => addCh(8);
+    // Outputs
+    $$('[data-ol]').forEach((i) => (i.oninput = () => {
+      p.outputs.find((x) => x.ch === +i.dataset.ol).label = i.value;
+      i.closest('tr').className = i.value ? '' : 'empty-row';
+      save();
+    }));
+    $$('[data-on]').forEach((i) => (i.oninput = () => { p.outputs.find((x) => x.ch === +i.dataset.on).note = i.value; save(); }));
+    const addOut = async (k) => {
+      const n = p.outputs.length;
+      for (let i = 1; i <= k; i++) p.outputs.push({ ch: n + i, label: '', note: '' });
+      await DB.put('profiles', p); render();
+    };
+    $('[data-oadd1]').onclick = () => addOut(1);
+    $('[data-oadd8]').onclick = () => addOut(8);
+    $('[data-orm1]').onclick = async () => { p.outputs.pop(); await DB.put('profiles', p); render(); };
+    $('[data-opaste]').onclick = async () => {
+      const txt = await pasteDialog('Outputs einfügen (eine Zeile pro Output)');
+      if (!txt) return;
+      const labels = txt.split(/\r?\n/).map((l) => l.replace(/^\s*(out(put)?\s*)?\d+\s*[:.)\-–\t]?\s*/i, '').trim()).filter(Boolean);
+      p.outputs = labels.map((label, i) => ({ ch: i + 1, label, note: p.outputs[i]?.note || '' }));
+      await DB.put('profiles', p);
+      toast(`${labels.length} Outputs übernommen`);
+      render();
     };
     $('[data-rm1]').onclick = async () => { p.channels.pop(); await DB.put('profiles', p); render(); };
     $('[data-paste]').onclick = async () => {

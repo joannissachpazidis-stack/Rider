@@ -36,7 +36,7 @@ function toast(msg) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.classList.add('show'), 10);
-  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, Math.max(2600, msg.length * 55));
 }
 
 /* ---------------- Daten ---------------- */
@@ -1103,24 +1103,31 @@ window.addEventListener('hashchange', render);
 // Dateien irgendwo auf die Seite ziehen → automatisch erkennen und ablegen
 const dropOverlay = $('#drop-overlay');
 let dragDepth = 0;
-const isFileDrag = (e) => e.dataTransfer?.types?.includes('Files') && !document.querySelector('.modal-backdrop');
+let innerDrag = false; // Ziehen innerhalb der App (z. B. ein Link) ist kein Ablegen
+document.addEventListener('dragstart', () => (innerDrag = true));
+document.addEventListener('dragend', () => (innerDrag = false));
+const isFileDrag = (e) => !innerDrag && !document.querySelector('.modal-backdrop') && ['Files', 'text/uri-list'].some((t) => e.dataTransfer?.types?.includes(t));
 window.addEventListener('dragenter', (e) => { if (isFileDrag(e)) { dragDepth++; dropOverlay.hidden = false; } });
 window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropOverlay.hidden = true; } });
 window.addEventListener('dragover', (e) => { if (isFileDrag(e)) e.preventDefault(); });
-window.addEventListener('drop', (e) => {
+window.addEventListener('drop', async (e) => {
   dragDepth = 0;
   dropOverlay.hidden = true;
-  if (document.querySelector('.modal-backdrop') || !e.dataTransfer?.files.length) return;
+  if (document.querySelector('.modal-backdrop') || !isFileDrag(e)) return;
   e.preventDefault();
+  if (Smart.droppedLinkOnly(e.dataTransfer)) { toast(Smart.LINK_HINT); return; }
+  const target = e.target;
+  const files = await Smart.filesFromDrop(e.dataTransfer);
+  if (!files.length) { toast('Keine Dateien gefunden'); return; }
   const [, view, id] = location.hash.split('/');
   const ctx = {};
   if (view === 'band') ctx.bandId = id;
   if (view === 'concert') {
     ctx.concertId = id;
-    const card = e.target.closest?.('[data-band]');
+    const card = target.closest?.('[data-band]');
     if (card) ctx.bandId = card.dataset.band;
   }
-  Smart.run(e.dataTransfer.files, ctx);
+  Smart.run(files, ctx);
 });
 $('#add-rider').onclick = async () => {
   const f = await Smart.pickFiles();
