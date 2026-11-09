@@ -353,6 +353,9 @@ const PatchUI = (() => {
       <p class="muted small no-print">Die Zuordnung erfolgt über die Instrument-Bezeichnungen. Über „← Band-Kanal“ kannst du jede Zeile umlegen. Mikro, Stativ, 48V und Notiz lassen sich direkt in der Tabelle ändern – das wird in der Inputliste der Band gespeichert.</p>`;
   }
 
+  // Schutz vor Formel-Einschleusung in Excel: Zellen, die mit = + - @ beginnen, werden als Text markiert
+  const cellSafe = (c) => { const t = String(c ?? '').replace(/[\t\r\n]+/g, ' '); return /^[=+\-@]/.test(t) && !/^-?\d+([.,]\d+)?$/.test(t) ? "'" + t : t; };
+
   async function exportRows(b, docs, pid) {
     const profile = await DB.get('profiles', pid);
     const inp = rowsOf(b, docs);
@@ -392,12 +395,12 @@ const PatchUI = (() => {
     $('[data-hideempty]', root).onchange = (e) => { hideEmpty = e.target.checked; localStorage.setItem('patch.hideEmpty', hideEmpty ? '1' : ''); render(); };
     $('[data-copy]', root).onclick = async () => {
       const rows = await exportRows(b, docs, pid);
-      const txt = rows.map((r) => r.join('\t')).join('\n');
+      const txt = rows.map((r) => r.map(cellSafe).join('\t')).join('\n');
       try { await navigator.clipboard.writeText(txt); toast('Kopiert – z. B. in Excel oder eine Mail einfügen'); } catch { modal(`<h2>Patch</h2><textarea rows="14" class="mono">${esc(txt)}</textarea><div class="actions"><button class="primary" data-close>OK</button></div>`); }
     };
     $('[data-csv]', root).onclick = async () => {
       const rows = await exportRows(b, docs, pid);
-      const csv = '﻿' + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+      const csv = '﻿' + rows.map((r) => r.map((c) => `"${cellSafe(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       const a = Object.assign(document.createElement('a'), { href: url, download: `Patch_${b.name.replace(/[^\w-]+/g, '_')}.csv` });
       document.body.appendChild(a); a.click(); a.remove();

@@ -52,9 +52,26 @@ const DB = (() => {
 
   function changed(name, obj) { listeners.forEach((f) => f(name, obj)); }
 
+  // Schutz für Daten von außen (Cloud, Backup-Datei): Technische Felder – Kennungen, Kanalnummern,
+  // Uhrzeiten, Arten – werden an vielen Stellen direkt in die Oberfläche eingesetzt. Sie dürfen daher keine
+  // Zeichen enthalten, mit denen sich HTML/Code einschleusen ließe. Freitexte (Namen, Notizen …) werden
+  // dagegen bei der Anzeige immer maskiert und hier nicht verändert.
+  const STRUCT = /^(id|.*Id|.*Ids|ch|type|kind|time|end|date)$/;
+  const BAD = /[<>"'`&\\]/g;
+  function sanitize(v, key = '') {
+    if (Array.isArray(v)) return v.map((x) => sanitize(x, key));
+    if (v && typeof v === 'object' && !(v instanceof Blob)) {
+      for (const k of Object.keys(v)) v[k] = sanitize(v[k], k);
+      return v;
+    }
+    if (typeof v === 'string' && STRUCT.test(key)) return v.replace(BAD, '').slice(0, 200);
+    return v;
+  }
+
   return {
     STORES: ['bands', 'concerts', 'docs', 'profiles'],
     raw,
+    sanitize,
     onChange(fn) { listeners.add(fn); },
     async all(name) { return (await raw.all(name)).filter(alive); },
     async get(name, id) { const o = await raw.get(name, id); return alive(o) ? o : undefined; },

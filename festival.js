@@ -307,7 +307,7 @@ const Festival = (() => {
         <button class="ghost small-btn" data-fstage>＋ Bühne</button></div>` : ''}
       <div class="page-head day-head">
         <div><h2>${esc(d.dayLabel || 'Tag')}${d.stage ? ` · ${esc(d.stage)}` : ''}</h2>
-          <div class="muted">${[d.date && fmtWeekday(d.date) + ', ' + fmtDate(d.date), d.time && d.time + ' Uhr'].filter(Boolean).join(' · ')}
+          <div class="muted">${[d.date && fmtWeekday(d.date) + ', ' + fmtDate(d.date), d.time && esc(d.time) + ' Uhr'].filter(Boolean).join(' · ')}
             ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}</div></div>
         <div class="head-actions">${siblings.length === 1 && !d.stage ? '<button class="ghost" data-fstage>＋ Bühne</button>' : ''}<button class="ghost" data-editc>Bearbeiten</button></div>
       </div>`;
@@ -344,7 +344,7 @@ const Festival = (() => {
         </div>
         ${g.map((d) => `
           <div class="fest-stage">
-            <a href="#/concert/${f.id}/${d.id}" class="fest-stage-name">${d.stage ? `🎚 ${esc(d.stage)}` : 'Line-up'}<span class="muted small">${[d.time && 'Beginn ' + d.time, Schedule.summary(d)].filter(Boolean).join(' · ')}</span></a>
+            <a href="#/concert/${f.id}/${d.id}" class="fest-stage-name">${d.stage ? `🎚 ${esc(d.stage)}` : 'Line-up'}<span class="muted small">${[d.time && 'Beginn ' + esc(d.time), esc(Schedule.summary(d))].filter(Boolean).join(' · ')}</span></a>
             <div class="band-chips">${chips(d.lineup)}</div>
             ${g.length > 1 && prints.get(d.id).html ? `<button class="link small no-print" data-pday="${d.id}">🖨 nur ${esc(d.stage || 'diese Bühne')}</button>` : ''}
           </div>`).join('')}

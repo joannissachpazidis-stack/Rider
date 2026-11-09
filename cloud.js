@@ -6,7 +6,7 @@ const Cloud = (() => {
   // Stagebox-Profile laufen unter der Art 'band' mit Markierung _store, damit die bestehende Tabelle ohne Änderung passt.
   const KIND = { bands: 'band', concerts: 'concert', docs: 'doc', profiles: 'band' };
   const STORE = { band: 'bands', concert: 'concerts', doc: 'docs' };
-  const LS = { cfg: 'cloud.cfg', session: 'cloud.session', lastPull: 'cloud.lastPull', lastSync: 'cloud.lastSync', lastUser: 'cloud.lastUser', team: 'cloud.team' };
+  const LS = { cfg: 'cloud.cfg', session: 'cloud.session', lastPull: 'cloud.lastPull', lastSync: 'cloud.lastSync', lastUser: 'cloud.lastUser', team: 'cloud.team', wasMember: 'cloud.wasMember' };
 
   const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
   const preset = window.CLOUD_CONFIG && window.CLOUD_CONFIG.url && window.CLOUD_CONFIG.key ? window.CLOUD_CONFIG : null;
@@ -27,7 +27,8 @@ const Cloud = (() => {
   const cleanKey = (k) => String(k || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
   const fixCfg = (c) => (c && c.url ? { url: normalizeUrl(c.url), key: cleanKey(c.key) } : c);
 
-  let cfg = fixCfg(read(LS.cfg) || preset);
+  // Fest eingetragene Verbindung (config.js) hat immer Vorrang und lässt sich nicht umstellen.
+  let cfg = preset ? fixCfg(preset) : fixCfg(read(LS.cfg));
   if (cfg) localStorage.getItem(LS.cfg) && localStorage.setItem(LS.cfg, JSON.stringify(cfg));
   let session = read(LS.session);
   if (session?.user?.id && !localStorage.getItem(LS.lastUser)) localStorage.setItem(LS.lastUser, session.user.id);
@@ -93,6 +94,13 @@ const Cloud = (() => {
     const list = new Set((src.sharedWith || []).map((e) => String(e).toLowerCase()));
     if (src.owner) list.add(src.owner);
     return [...list];
+  }
+
+  // Alle Daten dieses Kontos vom Gerät entfernen (Cloud bleibt unberührt)
+  async function wipeLocal() {
+    for (const st of DB.STORES) await DB.raw.clear(st);
+    for (const k of [LS.lastPull, LS.lastSync, LS.team, LS.lastUser, LS.wasMember]) localStorage.removeItem(k);
+    team = [];
   }
 
   // Gehöre ich zum Team? Holt dabei auch die Team-Liste. Ist das Team noch leer, trägt sich die erste Person selbst ein.
@@ -181,7 +189,8 @@ const Cloud = (() => {
           continue;
         }
         if (local && !local.dirty && local.updatedAt === row.data.updatedAt) continue; // schon bekannt
-        const rec = { ...row.data, dirty: false, _synced: true };
+        if (!/^[\w-]{1,80}$/.test(row.id)) continue; // ungültige Kennung → ignorieren
+        const rec = DB.sanitize({ ...row.data, id: row.id, dirty: false, _synced: true });
         delete rec._store;
         if (s === 'docs') {
           rec.filePath ||= `${row.user_id}/${row.id}`;
@@ -247,7 +256,13 @@ const Cloud = (() => {
         if (!navigator.onLine) { setState('offline'); return; }
         setState('syncing');
         try {
-          if (!(await checkMember())) { setState('notmember'); return; }
+          if (!(await checkMember())) {
+            // Wer aus dem Team entfernt wurde, behält keine Kopie der Team-Daten auf dem Gerät
+            if (localStorage.getItem(LS.wasMember) === userId()) { await wipeLocal(); remoteListeners.forEach((f) => f(1)); }
+            setState('notmember');
+            return;
+          }
+          localStorage.setItem(LS.wasMember, userId());
           // Erst holen, dann senden: bei Konflikten gewinnt die jüngere Änderung.
           const changed = await pull();
           await push();
@@ -277,15 +292,41 @@ const Cloud = (() => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); });
   setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
 
-  // Einrichtungslink (?cloud=...) für weitere Geräte
+  // Einrichtungslink (?cloud=...) für weitere Geräte.
+  // Sicherheit: Ein präparierter Link darf das Login nicht unbemerkt an einen fremden Server umleiten.
+  //  - Ist die Verbindung in config.js fest eingetragen, werden solche Links ignoriert.
+  //  - Nur echte Supabase-Adressen (https://xxxx.supabase.co) werden angenommen.
+  //  - Ist schon eine andere Verbindung eingerichtet, muss der Wechsel bestätigt werden;
+  //    dabei wird abgemeldet und die lokale Kopie gelöscht, damit nichts zum neuen Server wandert.
+  let pendingSwitch = null;
   try {
     const p = new URLSearchParams(location.search).get('cloud');
     if (p) {
-      const c = JSON.parse(decodeURIComponent(escape(atob(p))));
-      if (c.url && c.key) { cfg = { url: c.url, key: c.key }; localStorage.setItem(LS.cfg, JSON.stringify(cfg)); }
       history.replaceState(null, '', location.pathname + (location.hash || '#/more'));
+      const c = fixCfg(JSON.parse(decodeURIComponent(escape(atob(p)))));
+      const valid = c?.url && c.key && /^https:\/\/[a-z0-9]{15,30}\.supabase\.co$/.test(c.url);
+      if (preset || !valid) { /* ignorieren */ }
+      else if (!cfg?.url) { cfg = { url: c.url, key: c.key }; localStorage.setItem(LS.cfg, JSON.stringify(cfg)); }
+      else if (c.url !== cfg.url || c.key !== cfg.key) pendingSwitch = c;
     }
   } catch { /* ungültiger Link */ }
+  function askSwitch() {
+    if (!pendingSwitch) return;
+    const c = pendingSwitch;
+    pendingSwitch = null;
+    const host = new URL(c.url).host;
+    const ok = confirm(`Dieser Link möchte die App mit einem ANDEREN Server verbinden:\n\n${host}\n\nBisher: ${new URL(cfg.url).host}\n\nNur bestätigen, wenn du diesen Link sicher von deinem Team bekommen hast. Du wirst abgemeldet und die Daten auf diesem Gerät werden gelöscht.`);
+    if (!ok) return;
+    saveSession(null);
+    localStorage.removeItem(LS.lastPull);
+    localStorage.removeItem(LS.team);
+    Promise.all(DB.STORES.map((st) => DB.raw.clear(st))).finally(() => {
+      cfg = { url: c.url, key: c.key };
+      localStorage.setItem(LS.cfg, JSON.stringify(cfg));
+      location.reload();
+    });
+  }
+  setTimeout(askSwitch, 300);
 
   if (!configured()) state = 'off';
   else if (!loggedIn()) state = 'loggedout';
@@ -328,6 +369,7 @@ const Cloud = (() => {
     async configure(url, key) {
       const next = { url: normalizeUrl(url), key: cleanKey(key) };
       if (!next.key) return 'Bitte den anon / publishable key eintragen.';
+      if (!/^https:\/\//.test(next.url)) return 'Die Adresse muss mit https:// beginnen.';
       if (/service_role/.test(atobSafe(next.key.split('.')[1])) || /^sb_secret_/.test(next.key)) {
         return 'Das ist der geheime service_role / secret Key. Bitte den „anon“ bzw. „publishable“ Key nehmen – der geheime darf nicht in die App.';
       }
@@ -383,10 +425,17 @@ const Cloud = (() => {
       if (s?.access_token) { await this.signIn(email, password); return 'ok'; }
       return 'confirm';
     },
-    async signOut() {
+    // Noch nicht übertragene Änderungen auf diesem Gerät
+    async pendingChanges() {
+      let n = 0;
+      for (const st of DB.STORES) n += (await DB.raw.all(st)).filter((r) => r.dirty).length;
+      return n;
+    },
+    async signOut({ wipe = false } = {}) {
       try { await api('/auth/v1/logout', { method: 'POST' }); } catch { /* egal */ }
       saveSession(null);
       localStorage.removeItem(LS.lastPull);
+      if (wipe) await wipeLocal();
       setState('loggedout');
     },
   };
