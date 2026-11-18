@@ -7,6 +7,7 @@ Diese Übersicht beschreibt, welche Daten die App verarbeitet, wo sie liegen, we
 - **Bands:** Name, Genre, Kontakt (oft Name, Telefon, E-Mail einer Ansprechperson), Notizen, Mix-Notizen.
 - **Rider/Unterlagen:** Techrider, Inputlisten, Stageplots, Hospitality-Rider usw. als Dateien plus ausgelesener Text. Diese können personenbezogene Daten enthalten – bei Jugendbands auch von **Minderjährigen**, in Hospitality-Ridern teils **Gesundheitsangaben** (Allergien, Ernährung = besondere Kategorie nach Art. 9 DSGVO).
 - **Konzerte/Festivals:** Datum, Ort, Line-up, Tagesablauf, Notizen.
+- **Locations:** Name, Adresse, Kontakt der Haustechnik (Name, Telefon, E-Mail), Notizen und die Rider/Pläne der Location samt ausgelesenem Text.
 - **Team:** E-Mail-Adressen der Mitarbeitenden, Rolle (Admin/Verwaltung/Mitglied).
 
 ## Wo liegen die Daten?
@@ -22,7 +23,7 @@ Die App lädt keine Schriften, Skripte oder Tracker von Drittanbietern und sende
 ## Wer sieht was?
 
 - Nur **eingetragene Team-Mitglieder** sehen überhaupt etwas – ein Konto allein reicht nicht.
-- **Bands, Rider, Stagebox-Profile:** alle im Team.
+- **Bands, Rider, Locations, Stagebox-Profile:** alle im Team.
 - **Konzerte/Festivals:** nur wer sie angelegt hat und mit wem sie geteilt sind („Nur ich“, „Ganzes Team“, ausgewählte Personen).
 - **Team verwalten:** nur Admin und freigeschaltete Personen; Rechte vergibt nur der Admin.
 - Diese Regeln setzt die **Datenbank selbst** durch (Row Level Security), nicht nur die Oberfläche.

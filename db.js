@@ -4,7 +4,7 @@
 // als "dirty" markiert und von cloud.js mit der Cloud abgeglichen.
 const DB = (() => {
   const NAME = 'rider-ablage';
-  const VERSION = 2;
+  const VERSION = 3;
   let dbp = null;
   const listeners = new Set();
 
@@ -20,6 +20,10 @@ const DB = (() => {
           if (!db.objectStoreNames.contains('docs')) {
             db.createObjectStore('docs', { keyPath: 'id' }).createIndex('bandId', 'bandId');
           }
+          // Version 3: Locations mit eigenen Ridern
+          if (!db.objectStoreNames.contains('locations')) db.createObjectStore('locations', { keyPath: 'id' });
+          const docs = r.transaction.objectStore('docs');
+          if (!docs.indexNames.contains('locationId')) docs.createIndex('locationId', 'locationId');
         };
         r.onsuccess = () => {
           const db = r.result;
@@ -69,7 +73,7 @@ const DB = (() => {
   }
 
   return {
-    STORES: ['bands', 'concerts', 'docs', 'profiles'],
+    STORES: ['bands', 'concerts', 'docs', 'profiles', 'locations'],
     raw,
     sanitize,
     onChange(fn) { listeners.add(fn); },
