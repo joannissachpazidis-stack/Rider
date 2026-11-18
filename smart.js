@@ -729,5 +729,5 @@ const Smart = (() => {
     render();
   }
 
-  return { run, ask, pickFiles, filesFromDrop, droppedLinkOnly, LINK_HINT, noteDialog, progress, analyzeBlob, diff, detectType, suggestName };
+  return { run, ask, pickFiles, filesFromDrop, droppedLinkOnly, LINK_HINT, noteDialog, progress, analyzeBlob, diff, detectType, suggestName, extractDate };
 })();

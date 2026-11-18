@@ -32,6 +32,13 @@ Wird eine Datei auf die Karte einer Band im Konzert gezogen, ist Band und Konzer
 Eigener Bereich „Stagebox“: Profile anlegen, auf welchem Kanal du was haben willst – aus der Standard-Vorlage (32 Kanäle), leer, aus der Inputliste einer Band oder per eingefügter Liste. Pro Konzert lässt sich festlegen, welche Stagebox dort genutzt wird; der „🎛 Patch“-Knopf bei jeder Band nutzt dann dieses Profil.
 Unter den Inputs hat jedes Profil eigene **Outputs** (z. B. Monitorwege, IEM, Main L/R, Sub), in der Anzahl einstellbar wie die Inputs. In der Patchliste und auf dem Ausdruck stehen sie getrennt unter den Inputs; pro Band lässt sich zu jedem Output notieren, wofür er genutzt wird.
 
+### Locations
+Eigener Bereich „Locations“ für eure Spielorte: Name, Adresse, Kontakt zur Haustechnik, Notizen – und die Rider der Location (Hausrider, Tech Spec, Bühnen- und Lagepläne) per Drag & Drop.
+- Die wichtigsten Eckdaten werden **automatisch ausgelesen** und stehen direkt auf der Karte: Kapazität (stehend/sitzend), Raumgröße, Bühnengröße und -höhe, PA, Monitoring (Wedges, Wege, IEM, Side-/Drumfill), FOH- und Monitorpult, Stagebox, Bühnenanbindung (Glasfaser, Dante, Cat, Multicore, Distanz).
+- Auf der Location-Seite zusätzlich: Strom, Licht, Lautstärke & Curfew, Backline, Mikrofone, Load-in, Parken, Backstage, Haustechnik-Kontakt – jeweils mit der Fundstelle im Rider.
+- Jede Angabe lässt sich korrigieren, ausblenden oder von Hand ergänzen (auch eigene Angaben wie WLAN oder Schlüssel).
+- Konzerte und Festivals können eine Location bekommen – dann stehen ihre Eckdaten direkt im Konzert.
+
 ### Konzerte
 - Anstehende Konzerte nach Datum und Uhrzeit (das nächste oben, mit „Heute“, „Morgen“, „in 5 Tagen“), Konzerte ohne Datum separat, vergangene eingeklappt. Vergangene Konzerte bleiben mit den damals gültigen Ridern erhalten.
 - **Tagesablauf:** Get-in, Aufbau, Line-Check, Soundchecks, Catering, Einlass, Shows, Umbauten, Curfew, Abbau und eigene Einträge – mit Band und Notiz. „Ablauf erstellen“ macht einen Vorschlag aus dem Line-up (Soundchecks in umgekehrter Reihenfolge, Soundcheck- und Umbauzeiten aus den Ridern). Bei Verzug „Verschieben“ (alles ab einem Eintrag um X Minuten, Curfew bleibt fest), am Konzerttag ist der aktuelle Punkt markiert, Überschneidungen werden angezeigt. Drucken oder als Text kopieren (z. B. für WhatsApp). Showzeiten und Spielzeiten im Line-up bleiben synchron.

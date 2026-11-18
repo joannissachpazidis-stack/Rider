@@ -43,8 +43,10 @@ function toast(msg) {
 const Data = {
   bands: () => DB.all('bands'),
   concerts: () => DB.all('concerts'),
-  docs: () => DB.all('docs'),
+  docs: async () => (await DB.all('docs')).filter((d) => !d.locationId), // nur Band-Unterlagen
+  allDocs: () => DB.all('docs'),
   docsOfBand: (bandId) => DB.byIndex('docs', 'bandId', bandId),
+  docsOfLocation: (locationId) => DB.byIndex('docs', 'locationId', locationId),
 
   async findBandByName(name) {
     const n = norm(name);
@@ -148,7 +150,7 @@ async function safeKind(d) {
 async function previewDoc(id) {
   const d = await DB.get('docs', id);
   if (!d) return;
-  const band = await DB.get('bands', d.bandId);
+  const band = d.bandId ? await DB.get('bands', d.bandId) : d.locationId ? await DB.get('locations', d.locationId) : null;
   let url = null;
   let body = '';
   if (!d.blob && d.fileName && Cloud.loggedIn()) {
@@ -193,7 +195,7 @@ async function editDocDialog(id) {
     <div class="modal-head"><h2>Unterlage bearbeiten</h2><button class="icon" data-close aria-label="Schließen">✕</button></div>
     <form class="form">
       <label>Titel <input name="title" value="${esc(d.title)}" required></label>
-      <label>Art <select name="type">${DOC_TYPES.map((t) => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label>Art <select name="type">${(d.locationId ? Loc.TYPES : DOC_TYPES).map((t) => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       <label>Stand / Datum <input type="date" name="date" value="${esc(d.date)}"></label>
       <label>Notizen <textarea name="notes" rows="4">${esc(d.notes)}</textarea></label>
       <label class="check"><input type="checkbox" name="archived" ${d.archived ? 'checked' : ''}> veraltet</label>
@@ -295,6 +297,7 @@ async function riderCheck(bandId, concertId, { manual = false } = {}) {
 /* ---------------- Konzert anlegen / bearbeiten ---------------- */
 async function concertDialog(concert = null) {
   const bands = (await Data.bands()).sort(byName);
+  const locSelect = await Loc.selectHtml(concert?.locationId);
   const isNew = !concert;
   const chosen = [];
   const res = await modal(`
@@ -306,6 +309,7 @@ async function concertDialog(concert = null) {
         <label>Beginn <input type="time" name="time" value="${esc(concert?.time || '')}"></label>
       </div>
       <label>Ort / Venue <input name="venue" value="${esc(concert?.venue)}" placeholder="Club, Stadt"></label>
+      ${locSelect}
       ${Share.picker(concert)}
       ${isNew ? `
       <label>Bands
@@ -322,6 +326,7 @@ async function concertDialog(concert = null) {
     </form>`, (el, done) => {
     const form = $('form', el);
     Share.bindPicker(el);
+    Loc.bindSelect(form);
     if (isNew) {
       const known = new Map(bands.map((b) => [norm(b.name), b]));
       const chips = $('.chips', el);
@@ -352,7 +357,8 @@ async function concertDialog(concert = null) {
       const title = form.title.value.trim() || (chosen.length ? chosen.join(' / ') : '');
       if (!title) { const er = $('.error', el); er.textContent = 'Bitte einen Namen oder mindestens eine Band angeben.'; er.hidden = false; return; }
       const share = Share.read(el);
-      done({ title, date: form.date.value, time: form.time.value, venue: form.venue.value.trim(), notes: form.notes.value.trim(), ...(share ? { sharedWith: share } : {}) });
+      const loc = form.elements.namedItem('locationId');
+      done({ title, date: form.date.value, time: form.time.value, venue: form.venue.value.trim(), notes: form.notes.value.trim(), ...(share ? { sharedWith: share } : {}), ...(loc ? { locationId: loc.value || null } : {}) });
     };
   });
   if (!res) return;
@@ -659,6 +665,7 @@ async function viewConcert(id, sub) {
   const rel = relDay(c.date);
   const isPast = c.date && c.date < today();
   const allPrint = PatchUI.concertSheets(c, profiles, bands, docs);
+  const locHtml = await Loc.mini(c.locationId || fest?.f.locationId);
   app().innerHTML = `
     ${fest ? Festival.head(fest) + Festival.dayHead(fest) : `    <a class="back" href="#/concerts">‹ Konzerte</a>
     <div class="page-head">
@@ -667,6 +674,7 @@ async function viewConcert(id, sub) {
           ${rel ? `<span class="badge ${rel === 'Heute' ? 'accent' : ''}">${rel}</span>` : ''}${isPast ? '<span class="badge">vergangen</span>' : ''}${Share.badge(c)}</div></div>
       <div class="head-actions"><button class="ghost" data-editc>Bearbeiten</button><button class="ghost danger-text" data-delc>Löschen</button></div>
     </div>`}
+    ${locHtml}
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
     <div class="concert-tools card">
       ${profiles.length ? `<label class="lbl">🎛 Stagebox für ${fest ? 'diesen Tag' : 'dieses Konzert'}
@@ -860,8 +868,10 @@ async function viewBand(id, tab = '', arg = '', arg2 = '') {
 let searchQuery = '';
 async function viewSearch() {
   setTab('search');
-  const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
+  const [bands, docs, concerts, locs] = await Promise.all([Data.bands(), Data.allDocs(), Data.concerts(), DB.all('locations')]);
   const bandMap = new Map(bands.map((b) => [b.id, b]));
+  const locMap = new Map(locs.map((l) => [l.id, l]));
+  const ownerName = (d) => bandMap.get(d.bandId)?.name || (d.locationId && '📍 ' + (locMap.get(d.locationId)?.name || ''));
   app().innerHTML = `
     <div class="page-head"><h1>Suche</h1></div>
     <input class="search" type="search" placeholder="Bands, Konzerte, Orte, Rider-Inhalte …" value="${esc(searchQuery)}" autofocus>
@@ -879,13 +889,15 @@ async function viewSearch() {
     const rb = bands.filter((b) => hit([b.name, b.genre, b.contact, b.notes].join(' '))).sort(byName);
     const rc = concerts.filter((c) => hit([c.title, c.venue, c.notes, c.date, fmtDate(c.date), ...c.lineup.map((e) => bandMap.get(e.bandId)?.name)].join(' ')))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const rd = docs.filter((d) => hit([d.title, d.type, d.notes, d.fileName, bandMap.get(d.bandId)?.name, d.text].join(' ')))
+    const rl = locs.filter((l) => hit([l.name, l.address, l.contact, l.notes].join(' '))).sort(byName);
+    const rd = docs.filter((d) => hit([d.title, d.type, d.notes, d.fileName, ownerName(d), d.text].join(' ')))
       .sort((a, b) => a.archived - b.archived || (b.date || '').localeCompare(a.date || ''));
     out.innerHTML = `
       ${rb.length ? `<h3 class="section">Bands (${rb.length})</h3><div class="list">${rb.map((b) => `<a class="card row-card" href="#/band/${b.id}"><div class="avatar">${esc(b.name[0]?.toUpperCase())}</div><span class="grow"><b>${esc(b.name)}</b>${b.genre ? `<br><span class="muted small">${esc(b.genre)}</span>` : ''}</span></a>`).join('')}</div>` : ''}
       ${rc.length ? `<h3 class="section">Konzerte (${rc.length})</h3><div class="list">${rc.map((c) => `<a class="card row-card" href="#/concert/${c.id}"><span class="grow"><b>${esc(c.title)}</b><br><span class="muted small">${[fmtDate(c.date), c.venue && esc(c.venue), c.lineup.map((e) => esc(bandMap.get(e.bandId)?.name)).join(', ')].filter(Boolean).join(' · ')}</span></span></a>`).join('')}</div>` : ''}
-      ${rd.length ? `<h3 class="section">Unterlagen (${rd.length})</h3><ul class="docs">${rd.map((d) => docRow(d, { bandName: bandMap.get(d.bandId)?.name })).join('')}</ul>` : ''}
-      ${!rb.length && !rc.length && !rd.length ? '<p class="muted">Nichts gefunden.</p>' : ''}`;
+      ${rl.length ? `<h3 class="section">Locations (${rl.length})</h3><div class="list">${rl.map((l) => `<a class="card row-card" href="#/location/${l.id}"><div class="avatar">📍</div><span class="grow"><b>${esc(l.name)}</b>${l.address ? `<br><span class="muted small">${esc(l.address)}</span>` : ''}</span></a>`).join('')}</div>` : ''}
+      ${rd.length ? `<h3 class="section">Unterlagen (${rd.length})</h3><ul class="docs">${rd.map((d) => docRow(d, { bandName: ownerName(d) })).join('')}</ul>` : ''}
+      ${!rb.length && !rc.length && !rl.length && !rd.length ? '<p class="muted">Nichts gefunden.</p>' : ''}`;
     bindDocActions(out);
   };
   draw();
@@ -897,10 +909,10 @@ async function viewSearch() {
 const blobToDataURL = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
 
 async function exportAll() {
-  const [bands, docs, concerts, profiles] = await Promise.all([Data.bands(), Data.docs(), Data.concerts(), DB.all('profiles')]);
+  const [bands, docs, concerts, profiles, locations] = await Promise.all([Data.bands(), Data.allDocs(), Data.concerts(), DB.all('profiles'), DB.all('locations')]);
   const docsOut = [];
   for (const d of docs) docsOut.push({ ...d, blob: undefined, data: d.blob ? await blobToDataURL(d.blob) : null });
-  const json = JSON.stringify({ app: 'rider-ablage', version: 2, exportedAt: nowIso(), bands, concerts, profiles, docs: docsOut });
+  const json = JSON.stringify({ app: 'rider-ablage', version: 3, exportedAt: nowIso(), bands, concerts, profiles, locations, docs: docsOut });
   const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: `rider-ablage-backup-${today()}.json` });
   document.body.appendChild(a);
@@ -920,6 +932,7 @@ async function importAll(file) {
   for (const b of data.bands.filter(ok)) await DB.put('bands', DB.sanitize(b));
   for (const c of data.concerts.filter(ok)) await DB.put('concerts', DB.sanitize(c));
   for (const p of (data.profiles || []).filter(ok)) await DB.put('profiles', DB.sanitize(p));
+  for (const l of (data.locations || []).filter(ok)) await DB.put('locations', DB.sanitize(l));
   for (const d of data.docs.filter(ok)) {
     const { data: dataUrl, ...rest } = DB.sanitize(d);
     rest.blob = typeof dataUrl === 'string' && dataUrl.startsWith('data:') ? await (await fetch(dataUrl)).blob() : null;
@@ -1069,7 +1082,7 @@ function bindCloudCard() {
 
 async function viewMore() {
   setTab('more');
-  const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.docs(), Data.concerts()]);
+  const [bands, docs, concerts] = await Promise.all([Data.bands(), Data.allDocs(), Data.concerts()]);
   const size = docs.reduce((n, d) => n + (d.size || 0), 0);
   const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : false;
   const last = localStorage.getItem('lastBackup');
@@ -1130,6 +1143,7 @@ async function render() {
   const sameView = render.last === location.hash;
   render.last = location.hash;
   const views = { concerts: viewConcerts, concert: () => viewConcert(id, sub), bands: viewBands, band: () => viewBand(id, sub, arg, arg2), search: viewSearch, more: viewMore,
+    locations: () => Loc.viewList(), location: () => Loc.view(id),
     stagebox: () => (id ? PatchUI.viewProfile(id) : PatchUI.viewStagebox()) };
   await (views[view] || viewConcerts)();
   if (seq === renderSeq) window.scrollTo(0, sameView ? scroll : 0);
@@ -1157,6 +1171,7 @@ window.addEventListener('drop', async (e) => {
   const files = await Smart.filesFromDrop(e.dataTransfer);
   if (!files.length) { toast('Keine Dateien gefunden'); return; }
   const [, view, id] = location.hash.split('/');
+  if (view === 'location' && id) { Loc.importFiles(files, id); return; }
   const ctx = {};
   if (view === 'band') ctx.bandId = id;
   if (view === 'concert') {
@@ -1170,6 +1185,7 @@ $('#add-rider').onclick = async () => {
   const f = await Smart.pickFiles();
   if (!f.length) return;
   const [, view, id] = location.hash.split('/');
+  if (view === 'location' && id) { Loc.importFiles(f, id); return; }
   Smart.run(f, view === 'concert' ? { concertId: id } : view === 'band' ? { bandId: id } : {});
 };
 

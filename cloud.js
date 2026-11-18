@@ -4,7 +4,8 @@
 const Cloud = (() => {
   const BUCKET = 'riders';
   // Stagebox-Profile laufen unter der Art 'band' mit Markierung _store, damit die bestehende Tabelle ohne Änderung passt.
-  const KIND = { bands: 'band', concerts: 'concert', docs: 'doc', profiles: 'band' };
+  const KIND = { bands: 'band', concerts: 'concert', docs: 'doc', profiles: 'band', locations: 'band' };
+  const TAGGED = new Set(['profiles', 'locations']); // brauchen keine eigene Tabellen-Art
   const STORE = { band: 'bands', concert: 'concerts', doc: 'docs' };
   const LS = { cfg: 'cloud.cfg', session: 'cloud.session', lastPull: 'cloud.lastPull', lastSync: 'cloud.lastSync', lastUser: 'cloud.lastUser', team: 'cloud.team', wasMember: 'cloud.wasMember' };
 
@@ -150,7 +151,7 @@ const Cloud = (() => {
     for (const [s, r] of dirty) {
       rows.push({
         id: r.id, kind: KIND[s], deleted: !!r.deleted, shared_with: s === 'concerts' ? await shareList(r) : [],
-        data: r.deleted ? (s === 'profiles' ? { _store: s } : null) : (s === 'profiles' ? { ...strip(r), _store: s } : strip(r)),
+        data: r.deleted ? (TAGGED.has(s) ? { _store: s } : null) : (TAGGED.has(s) ? { ...strip(r), _store: s } : strip(r)),
       });
     }
     for (let i = 0; i < rows.length; i += 100) {

@@ -51,11 +51,13 @@ const Festival = (() => {
   /* ---------- Anlegen / Bearbeiten ---------- */
   async function createDialog() {
     const bands = (await Data.bands()).sort(byName);
+    const locSelect = await Loc.selectHtml(null);
     const res = await modal(`
       <div class="modal-head"><h2>🎪 Neues Festival</h2><button class="icon" data-close aria-label="Schließen">✕</button></div>
       <form class="form" novalidate>
         <label>Name <input name="title" required placeholder="z. B. Rock am See 2027" autofocus></label>
         <label>Ort <input name="venue" placeholder="Gelände, Stadt"></label>
+        ${locSelect}
         ${Share.picker()}
         <div class="row2">
           <label>Erster Tag <input type="date" name="date" value="${today()}"></label>
@@ -72,16 +74,17 @@ const Festival = (() => {
       </form>`, (el, done) => {
       const f = $('form', el);
       Share.bindPicker(el);
+      Loc.bindSelect(f);
       f.onsubmit = (e) => {
         e.preventDefault();
         const title = f.elements.namedItem('title').value.trim();
         if (!title) { const er = $('.error', el); er.textContent = 'Bitte einen Namen angeben.'; er.hidden = false; return; }
         done({ title, venue: f.venue.value.trim(), date: f.date.value || today(), n: Math.min(14, Math.max(1, +f.n.value || 1)),
-          stages: f.stages.value.split(',').map((s) => s.trim()).filter(Boolean), bands: f.bands.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean), notes: f.notes.value.trim(), sharedWith: Share.read(el) ?? Share.defaults() });
+          stages: f.stages.value.split(',').map((s) => s.trim()).filter(Boolean), bands: f.bands.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean), notes: f.notes.value.trim(), sharedWith: Share.read(el) ?? Share.defaults(), locationId: f.elements.namedItem('locationId')?.value || null });
       };
     });
     if (!res) return;
-    const fest = { id: uid(), kind: 'festival', title: res.title, venue: res.venue, notes: res.notes, stages: res.stages, sharedWith: res.sharedWith, lineup: [], createdAt: nowIso() };
+    const fest = { id: uid(), kind: 'festival', title: res.title, venue: res.venue, notes: res.notes, stages: res.stages, sharedWith: res.sharedWith, locationId: res.locationId, lineup: [], createdAt: nowIso() };
     Share.remember(res.sharedWith);
     for (const name of res.bands) {
       const { band } = await Data.findOrCreateBand(name);
@@ -96,21 +99,25 @@ const Festival = (() => {
   }
 
   async function editDialog(f) {
+    const locSelect = await Loc.selectHtml(f.locationId);
     const res = await modal(`
       <div class="modal-head"><h2>Festival bearbeiten</h2><button class="icon" data-close aria-label="Schließen">✕</button></div>
       <form class="form">
         <label>Name <input name="title" required value="${esc(f.title)}"></label>
         <label>Ort <input name="venue" value="${esc(f.venue || '')}"></label>
+        ${locSelect}
         ${Share.picker(f)}
         <label>Notizen <textarea name="notes" rows="3">${esc(f.notes || '')}</textarea></label>
         <div class="actions"><button type="button" class="ghost" data-close>Abbrechen</button><button class="primary">Speichern</button></div>
       </form>`, (el, done) => {
       const fm = $('form', el);
       Share.bindPicker(el);
+      Loc.bindSelect(fm);
       fm.onsubmit = (e) => {
         e.preventDefault();
         const share = Share.read(el);
-        done({ title: fm.elements.namedItem('title').value.trim() || f.title, venue: fm.venue.value.trim(), notes: fm.notes.value.trim(), ...(share ? { sharedWith: share } : {}) });
+        const loc = fm.elements.namedItem('locationId');
+        done({ title: fm.elements.namedItem('title').value.trim() || f.title, venue: fm.venue.value.trim(), notes: fm.notes.value.trim(), ...(share ? { sharedWith: share } : {}), ...(loc ? { locationId: loc.value || null } : {}) });
       };
     });
     if (!res) return;
@@ -352,7 +359,9 @@ const Festival = (() => {
 
     const rows = days.flatMap((d) => d.lineup.map((e) => ({ d, e, b: bandMap.get(e.bandId) }))).filter((x) => x.b);
     const pool = f.lineup.map((e) => ({ e, b: bandMap.get(e.bandId) })).filter((x) => x.b);
+    const locHtml = await Loc.mini(f.locationId);
     app().innerHTML = head(fest) + `
+      ${locHtml}
       ${f.notes ? `<div class="notes">${esc(f.notes)}</div>` : ''}
       <div class="concert-tools card">
         ${profiles.length ? `<label class="lbl">🎛 Stagebox für das Festival

@@ -535,3 +535,15 @@ td.ph { text-align: center; }
 .team-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line, #333); font-size: .92rem; }
 .team-list .role-toggle { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
 .team-list .role-toggle input { width: 18px; min-height: 18px; height: 18px; accent-color: var(--accent); }
+
+/* ---------- Locations ---------- */
+.loc-card { display: flex; gap: 12px; align-items: flex-start; }
+.lchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lchip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); font-size: .8rem; color: var(--text); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.lchip span { font-size: .85rem; }
+.loc-mini { display: block; margin: 10px 0; border-left: 3px solid var(--accent); }
+.loc-mini .lchips { margin-top: 6px; }
+@media (max-width: 420px) {
+  nav.tabs a { font-size: .68rem; padding: 8px 1px 10px; }
+  nav.tabs a span { font-size: 1.2rem; }
+}
